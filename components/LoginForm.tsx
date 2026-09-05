@@ -4,12 +4,20 @@ export function LoginForm({
   subtitle,
   withUsuario,
   hasError,
+  registerHref,
+  registerLabel,
 }: {
   action: (formData: FormData) => void;
   title: string;
   subtitle?: string;
   withUsuario?: boolean;
   hasError?: boolean;
+  /** Si se pasa, muestra un link debajo del botón de "Entrar" -- pensado
+   * para /refugio, donde un refugio nuevo necesita poder darse de alta él
+   * mismo. No se pasa desde /reportes: ahí el login es una sola password
+   * compartida del equipo, no algo en lo que alguien nuevo "se registra". */
+  registerHref?: string;
+  registerLabel?: string;
 }) {
   return (
     <main className="min-h-screen flex items-center justify-center bg-paper px-4">
@@ -40,6 +48,14 @@ export function LoginForm({
         <button type="submit" className="btn-primary">
           Entrar
         </button>
+        {registerHref && (
+          <a
+            href={registerHref}
+            className="text-center text-xs font-semibold text-teal hover:text-teal-deep hover:underline"
+          >
+            {registerLabel ?? "¿Aún no estás registrado? Regístrate aquí"}
+          </a>
+        )}
       </form>
     </main>
   );

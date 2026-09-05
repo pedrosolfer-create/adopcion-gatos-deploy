@@ -8,6 +8,8 @@ import {
   getGatoById,
   updateGatoEstado,
   verifyRefugioLogin,
+  createRefugio,
+  getRefugioByUsuario,
   type GatoEstado,
 } from "@/lib/db";
 import { getSession, setSession, clearSession } from "@/lib/auth";
@@ -42,6 +44,44 @@ export async function refugioLoginAction(formData: FormData) {
 
 export async function refugioLogoutAction() {
   await clearSession();
+  redirect("/refugio");
+}
+
+/** Alta de un refugio nuevo, hecha por el propio refugio desde
+ * /refugio/registro -- no hay todavía una pantalla para que el equipo dé
+ * de alta refugios desde /reportes, así que por ahora es autoservicio: el
+ * refugio elige su propio usuario/password y queda logueado de inmediato
+ * al terminar, sin ningún paso de aprobación intermedio. */
+export async function refugioRegisterAction(formData: FormData) {
+  const nombre = str(formData, "nombre");
+  const usuario = str(formData, "usuario");
+  const password = String(formData.get("password") ?? "");
+  const responsableNombre = str(formData, "responsableNombre");
+
+  if (!nombre || !usuario || !password || !responsableNombre) {
+    redirect("/refugio/registro?error=faltan_datos");
+  }
+  if (password.length < 6) {
+    redirect("/refugio/registro?error=password_corta");
+  }
+
+  const existente = await getRefugioByUsuario(usuario);
+  if (existente) {
+    redirect("/refugio/registro?error=usuario_tomado");
+  }
+
+  const refugio = await createRefugio({
+    nombre,
+    usuario,
+    password,
+    responsableNombre,
+    responsableTelefono: str(formData, "responsableTelefono") || undefined,
+    responsableEmail: str(formData, "responsableEmail") || undefined,
+    direccion: str(formData, "direccion") || undefined,
+    ciudad: str(formData, "ciudad") || undefined,
+  });
+
+  await setSession({ role: "refugio", refugioId: refugio.id });
   redirect("/refugio");
 }
 

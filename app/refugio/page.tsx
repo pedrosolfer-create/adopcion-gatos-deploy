@@ -52,6 +52,7 @@ export default async function RefugioPage({
         subtitle="Tus gatos, tus reportes, tu propia valoración -- solo lo tuyo."
         withUsuario
         hasError={error === "1"}
+        registerHref="/refugio/registro"
       />
     );
   }
@@ -65,6 +66,7 @@ export default async function RefugioPage({
         title="Acceso del refugio"
         subtitle="Esta sesión ya no es válida -- entra de nuevo."
         withUsuario
+        registerHref="/refugio/registro"
       />
     );
   }
