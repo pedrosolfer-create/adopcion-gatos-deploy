@@ -1,6 +1,8 @@
+import { PASSWORD_REQUIREMENTS } from "@/lib/password";
+
 const ERROR_MESSAGES: Record<string, string> = {
   faltan_datos: "Faltan datos obligatorios (nombre, usuario, password y responsable).",
-  password_corta: "La password debe tener al menos 6 caracteres.",
+  password_debil: "La password no cumple los requisitos de abajo.",
   usuario_tomado: "Ese usuario ya está en uso -- elige otro.",
 };
 
@@ -47,9 +49,23 @@ export function RegistroForm({
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs text-ink-soft">Password *</span>
-            <input name="password" type="password" required minLength={6} className="input" />
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={8}
+              pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9\s])(?!.*\s).{8,}"
+              title={`La password debe tener: ${PASSWORD_REQUIREMENTS.join(", ")}.`}
+              className="input"
+            />
           </label>
         </div>
+
+        <ul className="-mt-2 flex flex-col gap-0.5 pl-4 text-[11px] text-ink-soft list-disc">
+          {PASSWORD_REQUIREMENTS.map((req) => (
+            <li key={req}>{req}</li>
+          ))}
+        </ul>
 
         <label className="flex flex-col gap-1">
           <span className="text-xs text-ink-soft">Nombre del responsable *</span>

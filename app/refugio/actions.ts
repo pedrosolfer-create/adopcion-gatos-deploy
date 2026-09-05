@@ -14,6 +14,7 @@ import {
 } from "@/lib/db";
 import { getSession, setSession, clearSession } from "@/lib/auth";
 import { subirFotoGato } from "@/lib/cloudinary";
+import { isStrongPassword } from "@/lib/password";
 
 function str(fd: FormData, key: string): string {
   return String(fd.get(key) ?? "").trim();
@@ -61,8 +62,8 @@ export async function refugioRegisterAction(formData: FormData) {
   if (!nombre || !usuario || !password || !responsableNombre) {
     redirect("/refugio/registro?error=faltan_datos");
   }
-  if (password.length < 6) {
-    redirect("/refugio/registro?error=password_corta");
+  if (!isStrongPassword(password)) {
+    redirect("/refugio/registro?error=password_debil");
   }
 
   const existente = await getRefugioByUsuario(usuario);
