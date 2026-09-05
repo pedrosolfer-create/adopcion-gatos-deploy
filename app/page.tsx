@@ -5,11 +5,7 @@ import { DonaSection } from "@/components/sections/DonaSection";
 import { TiendaSection } from "@/components/sections/TiendaSection";
 import { WhatsAppBar } from "@/components/rescue/WhatsAppBar";
 import { ClosingRibbon } from "@/components/rescue/RibbonBanner";
-
-// TODO: número real de WhatsApp del refugio -- este es un placeholder, no
-// un número real (no hay que confundirlo con los números que aparecen en
-// los flyers de referencia que mandó el usuario, esos son de otras cuentas).
-const WHATSAPP_PLACEHOLDER = "55 0000 0000";
+import { CONTACTO_WHATSAPP } from "@/lib/contacto";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +42,7 @@ export default async function Home({
   const utmContent = one(sp.utm_content);
   const source = utmSource.toLowerCase().includes("instagram") ? "ANUNCIO_INSTAGRAM" : "";
   const gatoInteres = one(sp.gatoInteres);
+  const donativoError = one(sp.donativoError);
 
   const productos = await listProductosActivos();
   // Solo se muestran los gatos disponibles que ya tienen foto -- una
@@ -62,12 +59,12 @@ export default async function Home({
           campaign={{ source, utmSource, utmMedium, utmCampaign, utmContent, gatoInteres }}
           gatosDisponibles={gatosDisponibles}
         />
-        <DonaSection />
+        <DonaSection montoError={donativoError === "monto"} />
         <TiendaSection productos={productos} />
 
         <section className="rescue-theme bg-[var(--rescue-paper)] px-4 sm:px-6 py-8 flex flex-col items-center gap-6">
           <div className="w-full max-w-md">
-            <WhatsAppBar phone={WHATSAPP_PLACEHOLDER} message="Hola, quiero información para adoptar" />
+            <WhatsAppBar phone={CONTACTO_WHATSAPP} message="Hola, quiero información para adoptar" />
           </div>
           <ClosingRibbon className="w-full max-w-xl" />
         </section>

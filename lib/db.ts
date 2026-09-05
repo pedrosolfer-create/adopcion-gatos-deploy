@@ -161,6 +161,16 @@ CREATE TABLE IF NOT EXISTS "Pedido" (
   "status" TEXT NOT NULL DEFAULT 'PENDIENTE_PAGO',
   "notas" TEXT
 );
+
+CREATE TABLE IF NOT EXISTS "Donativo" (
+  "id" TEXT PRIMARY KEY,
+  "createdAt" TEXT NOT NULL,
+  "concepto" TEXT NOT NULL,
+  "montoCentavos" INTEGER NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'PENDIENTE',
+  "mpPreferenceId" TEXT,
+  "mpPaymentId" TEXT
+);
 `;
 
 let schemaReady: Promise<void> | null = null;
@@ -310,6 +320,18 @@ export interface PedidoItem {
 }
 
 export type PedidoStatus = "PENDIENTE_PAGO" | "PAGADO" | "CANCELADO";
+
+export type DonativoStatus = "PENDIENTE" | "PAGADO" | "CANCELADO";
+
+export interface Donativo {
+  id: string;
+  createdAt: string;
+  concepto: string;
+  montoCentavos: number;
+  status: DonativoStatus;
+  mpPreferenceId: string | null;
+  mpPaymentId: string | null;
+}
 
 export interface Pedido {
   id: string;
@@ -774,6 +796,76 @@ export async function updateGatoEstado(id: string, estado: GatoEstado): Promise<
 export async function deleteGato(id: string): Promise<void> {
   await ensureSchema();
   await pool.query(`DELETE FROM "Gato" WHERE "id" = $1`, [id]);
+}
+
+// ---------- Donativos ----------
+// El monto SÍ puede venir del navegador aquí (a diferencia de Pedido, que
+// siempre recalcula contra el catálogo) porque un donativo no tiene un
+// "precio correcto" que verificar -- cualquier monto positivo es válido.
+// iniciarDonativoAction ya valida que sea un número razonable antes de
+// llegar aquí.
+
+function rowToDonativo(row: unknown): Donativo {
+  const r = row as Record<string, unknown>;
+  return {
+    id: r.id as string,
+    createdAt: r.createdAt as string,
+    concepto: r.concepto as string,
+    montoCentavos: r.montoCentavos as number,
+    status: r.status as DonativoStatus,
+    mpPreferenceId: (r.mpPreferenceId as string) ?? null,
+    mpPaymentId: (r.mpPaymentId as string) ?? null,
+  };
+}
+
+export async function createDonativo(input: {
+  concepto: string;
+  montoCentavos: number;
+}): Promise<Donativo> {
+  await ensureSchema();
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO "Donativo" ("id", "createdAt", "concepto", "montoCentavos", "status")
+     VALUES ($1, $2, $3, $4, 'PENDIENTE')`,
+    [id, createdAt, input.concepto, input.montoCentavos]
+  );
+  return (await getDonativoById(id))!;
+}
+
+export async function getDonativoById(id: string): Promise<Donativo | null> {
+  await ensureSchema();
+  const { rows } = await pool.query(`SELECT * FROM "Donativo" WHERE "id" = $1`, [id]);
+  return rows[0] ? rowToDonativo(rows[0]) : null;
+}
+
+export async function listDonativos(limit = 50): Promise<Donativo[]> {
+  await ensureSchema();
+  const { rows } = await pool.query(`SELECT * FROM "Donativo" ORDER BY "createdAt" DESC LIMIT $1`, [
+    limit,
+  ]);
+  return rows.map(rowToDonativo);
+}
+
+export async function setDonativoPreferenceId(id: string, mpPreferenceId: string): Promise<void> {
+  await ensureSchema();
+  await pool.query(`UPDATE "Donativo" SET "mpPreferenceId" = $1 WHERE "id" = $2`, [
+    mpPreferenceId,
+    id,
+  ]);
+}
+
+export async function updateDonativoStatus(
+  id: string,
+  status: DonativoStatus,
+  mpPaymentId?: string
+): Promise<void> {
+  await ensureSchema();
+  await pool.query(`UPDATE "Donativo" SET "status" = $1, "mpPaymentId" = COALESCE($2, "mpPaymentId") WHERE "id" = $3`, [
+    status,
+    mpPaymentId ?? null,
+    id,
+  ]);
 }
 
 // ---------- Tienda: Productos ----------
