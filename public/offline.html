@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sin conexión — Sistema de Adopción de Gatos</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:#fbf4e6; color:#161412;
+    display:flex; align-items:center; justify-content:center;
+    padding:32px; text-align:center;
+  }
+  .card{max-width:360px;}
+  .paw{width:88px;height:88px;margin:0 auto 20px;display:block;}
+  h1{font-size:22px; margin-bottom:10px;}
+  p{font-size:15px; line-height:1.5; color:#4a453f;}
+  button{
+    margin-top:22px; background:#f5b301; color:#161412; border:none;
+    font-weight:700; font-size:15px; padding:12px 24px; border-radius:999px;
+    cursor:pointer;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <img class="paw" src="/icons/icon-192.png" alt="" />
+    <h1>Sin conexión por ahora</h1>
+    <p>No pudimos cargar esta página porque no hay internet en este momento. En cuanto vuelva la señal, se actualiza sola.</p>
+    <button onclick="location.reload()">Reintentar</button>
+  </div>
+</body>
+</html>

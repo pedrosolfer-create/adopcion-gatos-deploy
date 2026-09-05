@@ -1,0 +1,44 @@
+{
+  "name": "Sistema de Adopción de Gatos",
+  "short_name": "Adopta Gatos",
+  "description": "Adopta un gatito, apoya a un refugio, compra en la tienda o entra al panel de equipo/refugio.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fbf4e6",
+  "theme_color": "#f5b301",
+  "lang": "es-MX",
+  "dir": "ltr",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Adoptar un gatito",
+      "short_name": "Adopta",
+      "url": "/adopta",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Tienda",
+      "short_name": "Tienda",
+      "url": "/tienda",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Panel de refugio",
+      "short_name": "Refugio",
+      "url": "/refugio",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Panel de equipo",
+      "short_name": "Equipo",
+      "url": "/reportes",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
