@@ -11,12 +11,14 @@ import { getSession } from "@/lib/auth";
 import { StatTile } from "@/components/StatTile";
 import { TrendChart } from "@/components/TrendChart";
 import { LoginForm } from "@/components/LoginForm";
+import { DeleteGatoButton } from "@/components/DeleteGatoButton";
 import {
   addGatoAction,
   addRefugioReportAction,
   refugioLoginAction,
   refugioLogoutAction,
   updateGatoEstadoAction,
+  deleteGatoAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -239,6 +241,10 @@ export default async function RefugioPage({
                 >
                   Actualizar
                 </button>
+              </form>
+              <form action={deleteGatoAction} className="mt-0.5">
+                <input type="hidden" name="gatoId" value={g.id} />
+                <DeleteGatoButton nombre={g.nombre} />
               </form>
             </div>
           ))}

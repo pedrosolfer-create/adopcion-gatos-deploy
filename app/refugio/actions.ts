@@ -7,6 +7,7 @@ import {
   createGato,
   getGatoById,
   updateGatoEstado,
+  deleteGato,
   verifyRefugioLogin,
   createRefugio,
   getRefugioByUsuario,
@@ -135,6 +136,23 @@ export async function updateGatoEstadoAction(formData: FormData) {
   if (!gato || gato.refugioId !== refugioId) return;
 
   await updateGatoEstado(gatoId, estado);
+  revalidatePath("/refugio");
+}
+
+/** Borra un gato del panel del refugio -- pensado para altas hechas por
+ * error o duplicadas (ej. si el formulario se mandó más de una vez).
+ * Mismo chequeo de dueño que updateGatoEstadoAction: sin esto, un
+ * refugio podría mandar el id de un gato ajeno y borrarlo. */
+export async function deleteGatoAction(formData: FormData) {
+  const refugioId = await currentRefugioId();
+  if (!refugioId) return;
+  const gatoId = str(formData, "gatoId");
+  if (!gatoId) return;
+
+  const gato = await getGatoById(gatoId);
+  if (!gato || gato.refugioId !== refugioId) return;
+
+  await deleteGato(gatoId);
   revalidatePath("/refugio");
 }
 

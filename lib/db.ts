@@ -766,6 +766,16 @@ export async function updateGatoEstado(id: string, estado: GatoEstado): Promise<
   await pool.query(`UPDATE "Gato" SET "estado" = $1 WHERE "id" = $2`, [estado, id]);
 }
 
+/** Borra un gato (ej. una alta duplicada por error). No borra nada en
+ * Cloudinary -- la foto asociada queda huérfana ahí, pero eso no cuesta
+ * nada extra en el plan gratis y no vale la pena la complejidad de
+ * limpiarla también. Quien llama (deleteGatoAction) ya verificó que el
+ * gato pertenece al refugio de la sesión antes de llegar aquí. */
+export async function deleteGato(id: string): Promise<void> {
+  await ensureSchema();
+  await pool.query(`DELETE FROM "Gato" WHERE "id" = $1`, [id]);
+}
+
 // ---------- Tienda: Productos ----------
 // Los precios se guardan en CENTAVOS (enteros) a propósito -- nunca en
 // pesos con decimales -- para no arrastrar errores de punto flotante con
