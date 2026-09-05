@@ -26,27 +26,33 @@ export default async function DonarManualPage({
     : "Hola, quiero hacer un donativo. ¿Cómo le hago?";
 
   return (
-    <main className="rescue-theme min-h-screen flex flex-col items-center justify-center text-center px-6 py-20 bg-[var(--rescue-ink)] text-white">
-      <RibbonBanner tone="accent">Casi listo</RibbonBanner>
-      <p className="mt-5 text-white/85 max-w-md">
-        El pago en línea con tarjeta, OXXO o transferencia todavía no está activo en el sitio.
-        Escríbenos por WhatsApp con el monto que elegiste y te decimos cómo depositar (banco,
-        OXXO o donde prefieras) -- es rápido.
-      </p>
-      {donativo && (
-        <div className="mt-6 rounded-xl bg-white/10 p-4 text-sm w-full max-w-sm flex justify-between gap-2">
-          <span>{donativo.concepto}</span>
-          <span className="font-mono font-semibold text-[var(--rescue-accent)]">
-            {formatMXN(donativo.montoCentavos)}
-          </span>
+    // bg-[var(--rescue-ink)]/text-white van en el div interno, no en el
+    // mismo elemento que "rescue-theme" -- ver el comentario en
+    // components/sections/DonaSection.tsx para el porqué (choque de @layer
+    // de Tailwind contra CSS plano).
+    <main className="rescue-theme">
+      <div className="min-h-screen flex flex-col items-center justify-center text-center px-6 py-20 bg-[var(--rescue-ink)] text-white">
+        <RibbonBanner tone="accent">Casi listo</RibbonBanner>
+        <p className="mt-5 text-white/85 max-w-md">
+          El pago en línea con tarjeta, OXXO o transferencia todavía no está activo en el sitio.
+          Escríbenos por WhatsApp con el monto que elegiste y te decimos cómo depositar (banco,
+          OXXO o donde prefieras) -- es rápido.
+        </p>
+        {donativo && (
+          <div className="mt-6 rounded-xl bg-white/10 p-4 text-sm w-full max-w-sm flex justify-between gap-2">
+            <span>{donativo.concepto}</span>
+            <span className="font-mono font-semibold text-[var(--rescue-accent)]">
+              {formatMXN(donativo.montoCentavos)}
+            </span>
+          </div>
+        )}
+        <div className="mt-8 w-full max-w-sm">
+          <WhatsAppBar phone={CONTACTO_WHATSAPP} message={mensaje} label="Escríbenos" />
         </div>
-      )}
-      <div className="mt-8 w-full max-w-sm">
-        <WhatsAppBar phone={CONTACTO_WHATSAPP} message={mensaje} label="Escríbenos" />
+        <Link href="/#dona" className="mt-8 text-sm font-semibold text-[var(--rescue-accent)] underline">
+          ← Volver a la sección de donativos
+        </Link>
       </div>
-      <Link href="/#dona" className="mt-8 text-sm font-semibold text-[var(--rescue-accent)] underline">
-        ← Volver a la sección de donativos
-      </Link>
     </main>
   );
 }

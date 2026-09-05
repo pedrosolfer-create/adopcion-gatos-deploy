@@ -31,7 +31,16 @@ const DONATION_TIERS = [
  */
 export function DonaSection({ montoError }: { montoError?: boolean } = {}) {
   return (
-    <section id="dona" className="rescue-theme bg-[var(--rescue-ink)] text-white scroll-mt-14">
+    <section id="dona" className="rescue-theme scroll-mt-14">
+      {/* bg-[var(--rescue-ink)]/text-white van en este div interno, NUNCA en
+          el mismo elemento que lleva la clase "rescue-theme" -- esa clase
+          vive como CSS plano (fuera de cualquier @layer de Tailwind) en
+          globals.css, así que su propio `background`/`color` siempre le
+          gana a las utilidades de Tailwind (que sí están en @layer
+          utilities) cuando compiten en el mismo elemento, sin importar el
+          orden en el archivo. Este es el mismo patrón que ya usan
+          TiendaSection/AdoptaSection/Carrito. */}
+      <div className="bg-[var(--rescue-ink)] text-white">
       <div className="mx-auto max-w-2xl px-4 sm:px-6 py-14 sm:py-16 text-center">
         <RibbonBanner tone="accent" className="mx-auto">
           Dona
@@ -111,6 +120,7 @@ export function DonaSection({ montoError }: { montoError?: boolean } = {}) {
             transferencia (SPEI) o coordinando por WhatsApp -- lo que te sea más fácil.
           </p>
         </div>
+      </div>
       </div>
     </section>
   );
