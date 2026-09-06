@@ -2,6 +2,7 @@ import { submitAdoptaFormAction } from "@/app/adopta/actions";
 import { RibbonBanner } from "@/components/rescue/RibbonBanner";
 import { InfoBadge } from "@/components/rescue/InfoBadge";
 import { HeartDoodle, SparkleDoodle } from "@/components/rescue/Doodles";
+import { GatosGaleria } from "@/components/sections/GatosGaleria";
 import type { Gato } from "@/lib/db";
 
 export type CampaignParams = {
@@ -23,21 +24,6 @@ export type CampaignParams = {
  * Instagram/TikTok/Amazon Ads: hero + CTA arriba de todo, sin que la
  * persona tenga que pasar antes por donativos o tienda.
  */
-/** Reconstruye el query string preservando los utm_* actuales (para que
- * un clic en la galería de gatos no tire la atribución de la campaña que
- * trajo a la persona) y agrega gatoInteres con el gato en el que dio
- * clic. No se reincluye `source` -- Home ya lo vuelve a derivar de
- * utm_source en cada carga (ver app/page.tsx). */
-function gatoHref(campaign: CampaignParams, gatoNombre: string): string {
-  const qs = new URLSearchParams();
-  if (campaign.utmSource) qs.set("utm_source", campaign.utmSource);
-  if (campaign.utmMedium) qs.set("utm_medium", campaign.utmMedium);
-  if (campaign.utmCampaign) qs.set("utm_campaign", campaign.utmCampaign);
-  if (campaign.utmContent) qs.set("utm_content", campaign.utmContent);
-  qs.set("gatoInteres", gatoNombre);
-  return qs.toString();
-}
-
 export function AdoptaSection({
   campaign,
   gatosDisponibles,
@@ -82,49 +68,28 @@ export function AdoptaSection({
             </a>
           </div>
           <div className="relative rounded-2xl overflow-hidden shadow-2xl border-4 border-[var(--rescue-ink)]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/adopta-hero.png"
-              alt="Blackie, gato disponible para adopción"
-              className="w-full h-full object-cover aspect-[4/5]"
-            />
+            {/* Video en loop silencioso -- muted es obligatorio para que los
+             * navegadores permitan el autoplay sin interacción del usuario.
+             * poster usa la imagen antes/después previa como respaldo
+             * mientras el video carga o si el navegador no puede reproducirlo. */}
+            <video
+              autoPlay
+              muted
+              loop
+              playsInline
+              poster="/adopta-hero.png"
+              aria-label="Antes y después de una adopción -- dona para mantener esta página"
+              className="w-full h-full object-cover aspect-square"
+            >
+              <source src="/adopta-hero.mp4" type="video/mp4" />
+            </video>
           </div>
         </div>
       </div>
 
       {/* ---------- Galería de disponibles ---------- */}
       {gatosDisponibles.length > 0 && (
-        <div className="bg-[var(--rescue-paper)] scroll-mt-14">
-          <div className="mx-auto max-w-5xl px-4 sm:px-6 py-10 sm:py-12">
-            <RibbonBanner tone="dark" className="mb-4">
-              Conoce a quién puedes adoptar hoy
-            </RibbonBanner>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-              {gatosDisponibles.map((g) => (
-                <a
-                  key={g.id}
-                  href={`?${gatoHref(campaign, g.nombre)}#formulario`}
-                  className="group rounded-xl overflow-hidden border-2 border-[var(--rescue-ink)]/10 bg-white flex flex-col"
-                >
-                  <div className="aspect-square overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={g.fotoUrl!}
-                      alt={g.nombre}
-                      className="w-full h-full object-cover group-hover:scale-105 transition"
-                    />
-                  </div>
-                  <div className="p-2.5">
-                    <p className="font-bold text-sm text-[var(--rescue-ink)] truncate">{g.nombre}</p>
-                    <p className="text-xs text-[var(--rescue-ink)]/60 truncate">
-                      {[g.sexo, g.edadAprox].filter(Boolean).join(" · ") || "Disponible"}
-                    </p>
-                  </div>
-                </a>
-              ))}
-            </div>
-          </div>
-        </div>
+        <GatosGaleria campaign={campaign} gatosDisponibles={gatosDisponibles} />
       )}
 
       {/* ---------- Formulario filtro ---------- */}

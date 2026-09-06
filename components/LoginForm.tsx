@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export function LoginForm({
   action,
   title,
@@ -33,7 +35,7 @@ export function LoginForm({
           {subtitle && <p className="mt-1 text-sm text-ink-soft">{subtitle}</p>}
         </div>
         {hasError && (
-          <p className="text-sm text-rose font-semibold">Usuario o password incorrectos.</p>
+          <p className="text-sm text-rose font-semibold">Usuario o contraseña incorrectos.</p>
         )}
         {withUsuario && (
           <label className="flex flex-col gap-1">
@@ -42,7 +44,7 @@ export function LoginForm({
           </label>
         )}
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-ink-soft">Password</span>
+          <span className="text-xs text-ink-soft">Contraseña</span>
           <input name="password" type="password" required className="input" />
         </label>
         <button type="submit" className="btn-primary">
@@ -56,6 +58,12 @@ export function LoginForm({
             {registerLabel ?? "¿Aún no estás registrado? Regístrate aquí"}
           </a>
         )}
+        <Link
+          href="/"
+          className="text-center text-xs font-semibold text-ink-soft hover:text-teal-deep hover:underline"
+        >
+          ← Volver al inicio
+        </Link>
       </form>
     </main>
   );
