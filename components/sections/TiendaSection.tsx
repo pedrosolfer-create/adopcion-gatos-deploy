@@ -1,5 +1,6 @@
 import { RibbonBanner } from "@/components/rescue/RibbonBanner";
 import { Carrito } from "@/components/tienda/Carrito";
+import { isMercadoPagoConfigured } from "@/lib/mercadopago";
 import type { Producto } from "@/lib/db";
 
 /** Sección "Tienda" (id="tienda") -- antes era su propia página en /tienda;
@@ -14,15 +15,15 @@ export function TiendaSection({ productos }: { productos: Producto[] }) {
           <RibbonBanner tone="accent">Tienda</RibbonBanner>
           <h2 className="rescue-script text-5xl sm:text-6xl mt-4">Comida, arena y más para tu gato</h2>
           <p className="mt-3 text-white/80 max-w-xl">
-            Si ya adoptaste con nosotros, tienes precio especial en todo. Cada compra también
-            ayuda a mantener el refugio.
+            Si ya adoptaste con nosotros, tienes 10% de descuento en todo. Además, el 10% de cada
+            compra se destina a los refugios.
           </p>
         </div>
       </div>
 
       <div className="px-4 sm:px-6 py-10">
         <div className="mx-auto max-w-5xl">
-          <Carrito productos={productos} />
+          <Carrito productos={productos} pagoEnLineaDisponible={isMercadoPagoConfigured()} />
         </div>
       </div>
     </section>

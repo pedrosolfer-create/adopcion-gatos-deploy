@@ -36,10 +36,14 @@ function siteUrl(): string {
   return process.env.SITE_URL || "https://adopta.ceroluzcerogas.com";
 }
 
-export async function crearPreferenciaDonativo(input: {
-  donativoId: string;
-  concepto: string;
-  montoCentavos: number;
+/** Llamada compartida a la API de "preferences" de Checkout Pro -- tanto
+ * donativos como pedidos de la tienda arman la misma forma de petición,
+ * solo cambian los items, el external_reference y las back_urls. */
+async function crearPreferencia(input: {
+  items: Array<{ title: string; quantity: number; unitPriceCentavos: number }>;
+  externalReference: string;
+  backUrls: { success: string; pending: string; failure: string };
+  statementDescriptor: string;
 }): Promise<{ preferenceId: string; initPoint: string }> {
   const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
   if (!token) {
@@ -56,23 +60,21 @@ export async function crearPreferenciaDonativo(input: {
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      items: [
-        {
-          title: `Donativo: ${input.concepto}`,
-          quantity: 1,
-          currency_id: "MXN",
-          unit_price: Math.round(input.montoCentavos) / 100,
-        },
-      ],
-      external_reference: input.donativoId,
+      items: input.items.map((it) => ({
+        title: it.title,
+        quantity: it.quantity,
+        currency_id: "MXN",
+        unit_price: Math.round(it.unitPriceCentavos) / 100,
+      })),
+      external_reference: input.externalReference,
       back_urls: {
-        success: `${base}/donar/gracias?donativo=${input.donativoId}`,
-        pending: `${base}/donar/gracias?donativo=${input.donativoId}&estado=pendiente`,
-        failure: `${base}/donar/gracias?donativo=${input.donativoId}&estado=fallo`,
+        success: input.backUrls.success,
+        pending: input.backUrls.pending,
+        failure: input.backUrls.failure,
       },
       auto_return: "approved",
       notification_url: `${base}/api/mercadopago/webhook`,
-      statement_descriptor: "DONATIVO GATOS",
+      statement_descriptor: input.statementDescriptor,
     }),
   });
 
@@ -83,6 +85,52 @@ export async function crearPreferenciaDonativo(input: {
 
   const data = (await res.json()) as { id: string; init_point: string };
   return { preferenceId: data.id, initPoint: data.init_point };
+}
+
+/** external_reference se manda con un prefijo ("donativo:"/"pedido:") para
+ * que el webhook sepa en qué tabla buscar sin tener que adivinar --
+ * ver app/api/mercadopago/webhook/route.ts. */
+export async function crearPreferenciaDonativo(input: {
+  donativoId: string;
+  concepto: string;
+  montoCentavos: number;
+}): Promise<{ preferenceId: string; initPoint: string }> {
+  const base = siteUrl();
+  return crearPreferencia({
+    items: [{ title: `Donativo: ${input.concepto}`, quantity: 1, unitPriceCentavos: input.montoCentavos }],
+    externalReference: `donativo:${input.donativoId}`,
+    backUrls: {
+      success: `${base}/donar/gracias?donativo=${input.donativoId}`,
+      pending: `${base}/donar/gracias?donativo=${input.donativoId}&estado=pendiente`,
+      failure: `${base}/donar/gracias?donativo=${input.donativoId}&estado=fallo`,
+    },
+    statementDescriptor: "DONATIVO GATOS",
+  });
+}
+
+/** Igual que crearPreferenciaDonativo pero para un pedido de la tienda --
+ * cada producto del carrito va como su propio renglón en Checkout Pro (así
+ * el comprador ve el desglose real en la pantalla de pago de Mercado Pago,
+ * no solo un monto total). */
+export async function crearPreferenciaPedido(input: {
+  pedidoId: string;
+  items: Array<{ nombre: string; cantidad: number; precioUnitarioCentavos: number }>;
+}): Promise<{ preferenceId: string; initPoint: string }> {
+  const base = siteUrl();
+  return crearPreferencia({
+    items: input.items.map((it) => ({
+      title: it.nombre,
+      quantity: it.cantidad,
+      unitPriceCentavos: it.precioUnitarioCentavos,
+    })),
+    externalReference: `pedido:${input.pedidoId}`,
+    backUrls: {
+      success: `${base}/tienda/gracias?pedido=${input.pedidoId}`,
+      pending: `${base}/tienda/gracias?pedido=${input.pedidoId}&estado=pendiente`,
+      failure: `${base}/tienda/gracias?pedido=${input.pedidoId}&estado=fallo`,
+    },
+    statementDescriptor: "TIENDA GATOS",
+  });
 }
 
 /** Consulta un pago por su id -- lo usa el webhook para confirmar el

@@ -9,6 +9,7 @@ import {
 import { computeKpis, trendSeries, totalForReport, SOURCE_META } from "@/lib/reportes";
 import { getSession } from "@/lib/auth";
 import { formatMXN } from "@/lib/money";
+import { isCloudinaryConfigured } from "@/lib/cloudinary";
 import { StatTile } from "@/components/StatTile";
 import { TrendChart } from "@/components/TrendChart";
 import { SourceBreakdown } from "@/components/SourceBreakdown";
@@ -72,6 +73,10 @@ export default async function ReportesPage({
   const improvements = await listImprovements();
   const productos = await listProductosTodos();
   const pedidos = await listPedidos(30);
+  const cloudinaryConfigurado = isCloudinaryConfigured();
+  const totalRefugiosPendiente = pedidos
+    .filter((pe) => pe.status === "PAGADO")
+    .reduce((sum, pe) => sum + pe.montoRefugiosCentavos, 0);
 
   const kpis = computeKpis(reports);
   const trend = trendSeries(reports, 14);
@@ -342,10 +347,16 @@ export default async function ReportesPage({
                   <input name="stock" type="number" min={0} className="input" />
                 </label>
               </div>
-              <p className="text-xs text-muted">
-                Subir foto todavía no está conectado aquí -- por ahora el producto se muestra sin
-                imagen (queda anotado como mejora pendiente).
-              </p>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-ink-soft">URL de foto (opcional)</span>
+                <input name="fotoUrl" className="input" placeholder="Ej. /tienda/cat-chow-9kg.png" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-ink-soft">
+                  O sube una foto{!cloudinaryConfigurado && " (requiere Cloudinary configurado -- ver .env.example)"}
+                </span>
+                <input name="foto" type="file" accept="image/*" disabled={!cloudinaryConfigurado} className="input" />
+              </label>
               <button type="submit" className="btn-primary self-start">Guardar producto</button>
             </form>
           </details>
@@ -356,7 +367,17 @@ export default async function ReportesPage({
           {productos.map((p) => (
             <div key={p.id} className="rounded-xl border border-line bg-white p-4 flex flex-col gap-2">
               <div className="flex items-start justify-between gap-2">
-                <h3 className="text-sm font-semibold text-ink">{p.nombre}</h3>
+                <div className="flex items-center gap-2">
+                  {p.fotoUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.fotoUrl}
+                      alt={p.nombre}
+                      className="w-10 h-10 rounded-lg object-cover border border-line shrink-0"
+                    />
+                  )}
+                  <h3 className="text-sm font-semibold text-ink">{p.nombre}</h3>
+                </div>
                 <span
                   className={`text-[11px] font-mono font-semibold shrink-0 ${p.activo ? "text-teal-deep" : "text-muted"}`}
                 >
@@ -381,10 +402,19 @@ export default async function ReportesPage({
 
         <h3 className="text-sm font-bold text-ink mt-2">Pedidos</h3>
         <p className="text-xs text-ink-soft -mt-2">
-          Como todavía no hay pasarela de pago conectada, cada pedido nace &ldquo;Pendiente de pago&rdquo; --
-          contacta al comprador para coordinar cómo paga (transferencia, efectivo, etc.) y cambia
-          el estado aquí manualmente. En cuanto se conecte una pasarela real, esto se vuelve
-          automático.
+          Si Mercado Pago está configurado, el pedido se cobra en línea (tarjeta, OXXO o SPEI) y el
+          estado se actualiza solo cuando Mercado Pago confirma el pago. Si no está configurado, el
+          pedido nace &ldquo;Pendiente de pago&rdquo; y el comprador te escribe por WhatsApp --
+          contacta para coordinar cómo paga y cambia el estado aquí a mano.
+        </p>
+        <p className="text-xs font-mono font-semibold text-teal-deep -mt-1">
+          Para refugios, de pedidos ya pagados: {formatMXN(totalRefugiosPendiente)} (10% de cada
+          venta -- ver nota abajo).
+        </p>
+        <p className="text-[11px] text-muted -mt-2">
+          Esto es un monto de referencia para que el equipo transfiera manualmente a los refugios --
+          el pago completo del comprador entra a la cuenta de Mercado Pago del sitio, no hay reparto
+          automático todavía.
         </p>
         <div className="flex flex-col divide-y divide-line rounded-xl border border-line bg-white">
           {pedidos.length === 0 && <p className="p-4 text-sm text-ink-soft">Aún no hay pedidos.</p>}
@@ -411,6 +441,9 @@ export default async function ReportesPage({
                   </li>
                 ))}
               </ul>
+              <p className="text-[11px] font-mono text-teal">
+                Para refugios: {formatMXN(pe.montoRefugiosCentavos)}
+              </p>
               <div className="flex items-center gap-2 mt-1">
                 <PedidoStatusPill status={pe.status} />
                 <form action={changePedidoStatusAction} className="flex items-center gap-2">

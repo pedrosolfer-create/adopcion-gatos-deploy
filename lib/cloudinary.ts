@@ -47,8 +47,12 @@ const MAX_FOTO_BYTES = 8 * 1024 * 1024; // 8MB -- una foto de celular normal cab
  * fetch_format:auto) para no gastar de más los créditos gratis subiendo
  * fotos a resolución completa de celular (que fácilmente pesan varios MB
  * y miden 3000-4000px de ancho).
+ *
+ * `folder` separa las fotos por tipo dentro de la misma cuenta de
+ * Cloudinary ("gatos", "productos") -- puramente organizativo, no cambia
+ * el comportamiento de la subida.
  */
-export async function subirFotoGato(file: File): Promise<string> {
+async function subirImagen(file: File, folder: string): Promise<string> {
   if (!isCloudinaryConfigured()) {
     throw new Error(
       "CLOUDINARY_NOT_CONFIGURED: faltan CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET en las variables de entorno."
@@ -67,7 +71,7 @@ export async function subirFotoGato(file: File): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        folder: "gatos",
+        folder,
         transformation: [{ width: 1200, crop: "limit", quality: "auto", fetch_format: "auto" }],
       },
       (error, result) => {
@@ -80,4 +84,14 @@ export async function subirFotoGato(file: File): Promise<string> {
     );
     stream.end(buffer);
   });
+}
+
+export async function subirFotoGato(file: File): Promise<string> {
+  return subirImagen(file, "gatos");
+}
+
+/** Igual que subirFotoGato pero para fotos de producto de la tienda (ver
+ * app/reportes/actions.ts#addProductoAction). */
+export async function subirFotoProducto(file: File): Promise<string> {
+  return subirImagen(file, "productos");
 }

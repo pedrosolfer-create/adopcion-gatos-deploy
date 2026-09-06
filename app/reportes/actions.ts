@@ -17,6 +17,7 @@ import {
 } from "@/lib/db";
 import { getSession, setSession, clearSession, verifyEquipoPassword } from "@/lib/auth";
 import { pesosToCentavos } from "@/lib/money";
+import { subirFotoProducto } from "@/lib/cloudinary";
 
 function str(fd: FormData, key: string): string {
   return String(fd.get(key) ?? "").trim();
@@ -119,10 +120,27 @@ export async function changeImprovementStatusAction(formData: FormData) {
 
 // ---------- Tienda ----------
 
+/** El campo de URL de foto es el camino simple (pegar la ruta de una
+ * imagen ya subida, ej. "/tienda/cat-chow-9kg.png" si se agregó como
+ * archivo estático del sitio). El de archivo es el camino para el equipo
+ * cuando ya tenga Cloudinary configurado y quiera subir una foto real del
+ * producto que tiene en existencia -- si se manda un archivo, gana sobre
+ * la URL de texto. */
 export async function addProductoAction(formData: FormData) {
   if (!(await isEquipo())) return;
   const nombre = str(formData, "nombre");
   if (!nombre) return;
+
+  let fotoUrl = str(formData, "fotoUrl") || undefined;
+  const foto = formData.get("foto");
+  if (foto instanceof File && foto.size > 0) {
+    try {
+      fotoUrl = await subirFotoProducto(foto);
+    } catch (err) {
+      console.error("SUBIR_FOTO_PRODUCTO_FAILED", err);
+      redirect("/reportes?error=fotoProducto");
+    }
+  }
 
   await createProducto({
     nombre,
@@ -130,6 +148,7 @@ export async function addProductoAction(formData: FormData) {
     precioNormalCentavos: pesosToCentavos(str(formData, "precioNormal")),
     precioAdoptanteCentavos: pesosToCentavos(str(formData, "precioAdoptante")),
     stock: str(formData, "stock") ? num(formData, "stock") : undefined,
+    fotoUrl,
   });
 
   revalidatePath("/reportes");

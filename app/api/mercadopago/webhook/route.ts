@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDonativoById, updateDonativoStatus } from "@/lib/db";
+import { getDonativoById, updateDonativoStatus, getPedidoById, updatePedidoStatus } from "@/lib/db";
 import { obtenerPagoMercadoPago } from "@/lib/mercadopago";
 
 /**
@@ -55,11 +55,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // external_reference se manda como el donativoId (ver
-    // crearPreferenciaDonativo -- NO es el preferenceId de Mercado Pago).
-    const donativo = await getDonativoById(pago.externalReference);
+    // external_reference se manda con un prefijo ("donativo:<id>" o
+    // "pedido:<id>", ver lib/mercadopago.ts) para saber en qué tabla
+    // buscar. Se mantiene compatibilidad hacia atrás con preferencias
+    // creadas antes de este cambio, que mandaban solo el donativoId sin
+    // prefijo -- esas solo pueden ser donativos.
+    const [tipo, refId] = pago.externalReference.includes(":")
+      ? (pago.externalReference.split(":") as [string, string])
+      : ["donativo", pago.externalReference];
+
+    if (tipo === "pedido") {
+      const pedido = await getPedidoById(refId);
+      if (!pedido) {
+        console.warn("MP_WEBHOOK_PEDIDO_NO_ENCONTRADO", refId);
+        return NextResponse.json({ ok: true });
+      }
+      const status =
+        pago.status === "approved"
+          ? "PAGADO"
+          : pago.status === "rejected" || pago.status === "cancelled"
+            ? "CANCELADO"
+            : "PENDIENTE_PAGO";
+      await updatePedidoStatus(pedido.id, status, pago.id);
+      return NextResponse.json({ ok: true });
+    }
+
+    const donativo = await getDonativoById(refId);
     if (!donativo) {
-      console.warn("MP_WEBHOOK_DONATIVO_NO_ENCONTRADO", pago.externalReference);
+      console.warn("MP_WEBHOOK_DONATIVO_NO_ENCONTRADO", refId);
       return NextResponse.json({ ok: true });
     }
 

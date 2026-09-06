@@ -158,9 +158,20 @@ CREATE TABLE IF NOT EXISTS "Pedido" (
   "esAdoptante" INTEGER NOT NULL DEFAULT 0,
   "itemsJson" TEXT NOT NULL,
   "totalCentavos" INTEGER NOT NULL,
+  "montoRefugiosCentavos" INTEGER NOT NULL DEFAULT 0,
   "status" TEXT NOT NULL DEFAULT 'PENDIENTE_PAGO',
-  "notas" TEXT
+  "notas" TEXT,
+  "mpPreferenceId" TEXT,
+  "mpPaymentId" TEXT
 );
+
+-- Columnas agregadas después del primer despliegue de la tienda (pago real
+-- con Mercado Pago + rastreo del 10% para refugios) -- "ADD COLUMN IF NOT
+-- EXISTS" para que sea seguro correr esto también contra una base que ya
+-- tenía la tabla "Pedido" sin estas columnas.
+ALTER TABLE "Pedido" ADD COLUMN IF NOT EXISTS "montoRefugiosCentavos" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Pedido" ADD COLUMN IF NOT EXISTS "mpPreferenceId" TEXT;
+ALTER TABLE "Pedido" ADD COLUMN IF NOT EXISTS "mpPaymentId" TEXT;
 
 CREATE TABLE IF NOT EXISTS "Donativo" (
   "id" TEXT PRIMARY KEY,
@@ -342,8 +353,16 @@ export interface Pedido {
   esAdoptante: boolean;
   items: PedidoItem[];
   totalCentavos: number;
+  /** 10% del total (PORCENTAJE_REFUGIOS), calculado al crear el pedido --
+   * es un monto de referencia para que el equipo sepa cuánto transferir a
+   * refugios en /reportes, NO un reparto automático de pago real (ver
+   * lib/mercadopago.ts -- el comprador paga el total completo a la cuenta
+   * de Mercado Pago del sitio, como con los donativos). */
+  montoRefugiosCentavos: number;
   status: PedidoStatus;
   notas: string | null;
+  mpPreferenceId: string | null;
+  mpPaymentId: string | null;
 }
 
 // ---------- helpers ----------
@@ -939,6 +958,11 @@ export async function setProductoActivo(id: string, activo: boolean): Promise<vo
 
 // ---------- Tienda: Pedidos ----------
 
+/** Porcentaje del total de cada pedido que se etiqueta como destinado a
+ * refugios (ver comentario en el campo Pedido.montoRefugiosCentavos --
+ * es un monto de referencia/contable, no un reparto automático de pago). */
+export const PORCENTAJE_REFUGIOS = 0.1;
+
 function rowToPedido(row: unknown): Pedido {
   const r = row as Record<string, unknown>;
   return {
@@ -950,8 +974,11 @@ function rowToPedido(row: unknown): Pedido {
     esAdoptante: Boolean(r.esAdoptante),
     items: JSON.parse(r.itemsJson as string) as PedidoItem[],
     totalCentavos: r.totalCentavos as number,
+    montoRefugiosCentavos: (r.montoRefugiosCentavos as number) ?? 0,
     status: r.status as PedidoStatus,
     notas: (r.notas as string) ?? null,
+    mpPreferenceId: (r.mpPreferenceId as string) ?? null,
+    mpPaymentId: (r.mpPaymentId as string) ?? null,
   };
 }
 
@@ -959,8 +986,9 @@ function rowToPedido(row: unknown): Pedido {
  * Crea un pedido calculando el total EN EL SERVIDOR a partir de los
  * productos reales en la base de datos -- nunca a partir de un precio que
  * mande el cliente. Así, aunque alguien manipule el formulario del
- * navegador, no puede pagar (cuando haya pasarela conectada) un precio
- * distinto al que de verdad tiene el producto.
+ * navegador, no puede pagar un precio distinto al que de verdad tiene el
+ * producto. montoRefugiosCentavos también se calcula aquí (10% del total),
+ * nunca se recibe del cliente.
  */
 export async function createPedido(input: {
   compradorNombre: string;
@@ -989,12 +1017,13 @@ export async function createPedido(input: {
     totalCentavos += precioUnitarioCentavos * item.cantidad;
   }
 
+  const montoRefugiosCentavos = Math.round(totalCentavos * PORCENTAJE_REFUGIOS);
   const id = randomUUID();
   const createdAt = new Date().toISOString();
   await pool.query(
     `INSERT INTO "Pedido" ("id", "createdAt", "compradorNombre", "compradorTelefono", "compradorEmail",
-      "esAdoptante", "itemsJson", "totalCentavos", "status", "notas")
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDIENTE_PAGO', $9)`,
+      "esAdoptante", "itemsJson", "totalCentavos", "montoRefugiosCentavos", "status", "notas")
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDIENTE_PAGO', $10)`,
     [
       id,
       createdAt,
@@ -1004,6 +1033,7 @@ export async function createPedido(input: {
       input.esAdoptante ? 1 : 0,
       JSON.stringify(resolvedItems),
       totalCentavos,
+      montoRefugiosCentavos,
       input.notas ?? null,
     ]
   );
@@ -1022,9 +1052,21 @@ export async function listPedidos(limit = 50): Promise<Pedido[]> {
   return rows.map(rowToPedido);
 }
 
-export async function updatePedidoStatus(id: string, status: PedidoStatus): Promise<void> {
+export async function setPedidoPreferenceId(id: string, mpPreferenceId: string): Promise<void> {
   await ensureSchema();
-  await pool.query(`UPDATE "Pedido" SET "status" = $1 WHERE "id" = $2`, [status, id]);
+  await pool.query(`UPDATE "Pedido" SET "mpPreferenceId" = $1 WHERE "id" = $2`, [mpPreferenceId, id]);
+}
+
+export async function updatePedidoStatus(
+  id: string,
+  status: PedidoStatus,
+  mpPaymentId?: string
+): Promise<void> {
+  await ensureSchema();
+  await pool.query(
+    `UPDATE "Pedido" SET "status" = $1, "mpPaymentId" = COALESCE($2, "mpPaymentId") WHERE "id" = $3`,
+    [status, mpPaymentId ?? null, id]
+  );
 }
 
 export default pool;
