@@ -61,7 +61,7 @@ export function AdoptaSection({
               formulario y te contactamos en cuanto veamos tu solicitud.
             </p>
             
-              href="#formulario"
+             <a  href="#formulario"
               className="rescue-ribbon rescue-display mt-7 inline-flex items-center gap-2 bg-[var(--rescue-ink)] text-white px-7 py-3 font-extrabold uppercase text-sm hover:opacity-90 transition"
             >
               Quiero adoptar →
