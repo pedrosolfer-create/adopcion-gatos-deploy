@@ -11,11 +11,14 @@ import {
   verifyRefugioLogin,
   createRefugio,
   getRefugioByUsuario,
+  createVacunaGato,
+  deleteVacunaGato,
   type GatoEstado,
 } from "@/lib/db";
 import { getSession, setSession, clearSession } from "@/lib/auth";
-import { subirFotoGato } from "@/lib/cloudinary";
+import { subirFotosGato } from "@/lib/cloudinary";
 import { isStrongPassword } from "@/lib/password";
+import { PERSONALIDAD_OPCIONES, FRASE_OPCIONES } from "@/lib/gatoOpciones";
 
 function str(fd: FormData, key: string): string {
   return String(fd.get(key) ?? "").trim();
@@ -23,6 +26,25 @@ function str(fd: FormData, key: string): string {
 function num(fd: FormData, key: string): number {
   const v = Number(fd.get(key));
   return Number.isFinite(v) && v >= 0 ? v : 0;
+}
+/** Lee un checkbox tri-estado: si el <input type="checkbox"> no se manda
+ * en el FormData (checkbox sin marcar), regresa `undefined` -- distinto de
+ * `false` a propósito, para poder distinguir "no se sabe" (undefined ->
+ * NULL en la BD) de "se marcó explícitamente que no" -- hoy el formulario
+ * de alta no ofrece esa tercera opción, pero la columna sí la soporta para
+ * cuando se construya la edición de gatos ya dados de alta. */
+function checkbox(fd: FormData, key: string): boolean | undefined {
+  return fd.get(key) === "on" ? true : undefined;
+}
+/** Lee todos los valores marcados de un grupo de checkboxes con el mismo
+ * `name`, filtrando contra una lista de opciones válidas -- así un POST
+ * fabricado a mano no puede meter texto arbitrario en personalidadJson/
+ * frasesJson. */
+function checkboxGroup(fd: FormData, key: string, opciones: readonly string[]): string[] {
+  return fd
+    .getAll(key)
+    .map((v) => String(v))
+    .filter((v) => opciones.includes(v));
 }
 
 /** Devuelve el refugioId de la sesión actual, o null si no hay una sesión
@@ -93,18 +115,23 @@ export async function addGatoAction(formData: FormData) {
   const nombre = str(formData, "nombre");
   if (!nombre) return;
 
+  // Hasta 3 fotos -- todas opcionales, un <input type="file"> vacío llega
+  // como un File de tamaño 0, no como null (subirFotosGato ya filtra eso).
   let fotoUrl: string | undefined;
-  const foto = formData.get("foto");
-  // El input de foto es opcional -- un <input type="file"> vacío llega
-  // como un File de tamaño 0, no como null, por eso se checa foto.size.
-  if (foto instanceof File && foto.size > 0) {
-    try {
-      fotoUrl = await subirFotoGato(foto);
-    } catch (err) {
-      console.error("SUBIR_FOTO_GATO_FAILED", err);
-      redirect("/refugio?gatoError=foto");
-    }
+  let fotoUrl2: string | undefined;
+  let fotoUrl3: string | undefined;
+  try {
+    [fotoUrl, fotoUrl2, fotoUrl3] = await subirFotosGato([
+      formData.get("foto") as File | null,
+      formData.get("foto2") as File | null,
+      formData.get("foto3") as File | null,
+    ]);
+  } catch (err) {
+    console.error("SUBIR_FOTO_GATO_FAILED", err);
+    redirect("/refugio?gatoError=foto");
   }
+
+  const edadMesesRaw = str(formData, "edadMeses");
 
   await createGato({
     refugioId,
@@ -114,8 +141,64 @@ export async function addGatoAction(formData: FormData) {
     descripcion: str(formData, "descripcion") || undefined,
     estado: (str(formData, "estado") as GatoEstado) || "DISPONIBLE",
     fotoUrl,
+    fotoUrl2,
+    fotoUrl3,
+    edadMeses: edadMesesRaw ? num(formData, "edadMeses") : undefined,
+    fechaNacimiento: str(formData, "fechaNacimiento") || undefined,
+    raza: str(formData, "raza") || undefined,
+    esterilizado: checkbox(formData, "esterilizado"),
+    desparasitado: checkbox(formData, "desparasitado"),
+    vacunado: checkbox(formData, "vacunado"),
+    sanoListo: checkbox(formData, "sanoListo"),
+    personalidad: checkboxGroup(formData, "personalidad", PERSONALIDAD_OPCIONES),
+    frases: checkboxGroup(formData, "frases", FRASE_OPCIONES),
   });
 
+  revalidatePath("/refugio");
+}
+
+/** Registra una vacuna aplicada a un gato -- valida que el gato sea del
+ * refugio de la sesión antes de guardar, mismo chequeo que el resto de las
+ * acciones de este archivo. */
+export async function addVacunaAction(formData: FormData) {
+  const refugioId = await currentRefugioId();
+  if (!refugioId) return;
+  const gatoId = str(formData, "gatoId");
+  const tipoVacunaSel = str(formData, "tipoVacuna");
+  // "OTRA" es la opción del <select> para cuando ninguna vacuna común
+  // aplica -- en ese caso el texto real viene del input libre de al lado.
+  const tipoVacuna = tipoVacunaSel === "OTRA" ? str(formData, "tipoVacunaOtra") || "Otra" : tipoVacunaSel;
+  const fechaAplicacion = str(formData, "fechaAplicacion");
+  if (!gatoId || !tipoVacuna || !fechaAplicacion) return;
+
+  const gato = await getGatoById(gatoId);
+  if (!gato || gato.refugioId !== refugioId) return;
+
+  await createVacunaGato({
+    gatoId,
+    tipoVacuna,
+    fechaAplicacion,
+    fechaRevacunacion: str(formData, "fechaRevacunacion") || undefined,
+    notas: str(formData, "notas") || undefined,
+  });
+
+  revalidatePath("/refugio");
+}
+
+export async function deleteVacunaAction(formData: FormData) {
+  const refugioId = await currentRefugioId();
+  if (!refugioId) return;
+  const vacunaId = str(formData, "vacunaId");
+  const gatoId = str(formData, "gatoId");
+  if (!vacunaId || !gatoId) return;
+
+  // No hay una consulta directa "vacuna -> refugio dueño" en lib/db.ts sin
+  // pasar por el gato -- se valida así en vez de agregar un JOIN nuevo
+  // solo para este chequeo de permisos.
+  const gato = await getGatoById(gatoId);
+  if (!gato || gato.refugioId !== refugioId) return;
+
+  await deleteVacunaGato(vacunaId);
   revalidatePath("/refugio");
 }
 

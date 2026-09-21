@@ -10,6 +10,7 @@ import {
   updateImprovementStatus,
   createProducto,
   setProductoActivo,
+  setProductoCategoria,
   updatePedidoStatus,
   type StrategyStatus,
   type ImprovementStatus,
@@ -174,4 +175,18 @@ export async function changePedidoStatusAction(formData: FormData) {
 
   await updatePedidoStatus(id, status);
   revalidatePath("/reportes");
+}
+
+/** Marca (o quita) qué productos se pueden ofrecer para reenvío automático
+ * -- ver Producto.categoria en lib/db.ts. Un producto sin categoría
+ * ('') no aparece como opción en /suscripcion. */
+export async function setProductoCategoriaAction(formData: FormData) {
+  if (!(await isEquipo())) return;
+  const id = str(formData, "id");
+  const categoria = str(formData, "categoria");
+  if (!id) return;
+
+  await setProductoCategoria(id, categoria === "COMIDA" || categoria === "ARENA" ? categoria : null);
+  revalidatePath("/reportes");
+  revalidatePath("/suscripcion");
 }

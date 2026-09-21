@@ -4,6 +4,7 @@ import {
   listDailyReports,
   listLeads,
   countLeadsSince,
+  listVacunasByGato,
   type GatoEstado,
 } from "@/lib/db";
 import { computeKpis, trendSeries, totalForReport } from "@/lib/reportes";
@@ -12,6 +13,7 @@ import { StatTile } from "@/components/StatTile";
 import { TrendChart } from "@/components/TrendChart";
 import { LoginForm } from "@/components/LoginForm";
 import { DeleteGatoButton } from "@/components/DeleteGatoButton";
+import { PERSONALIDAD_OPCIONES, FRASE_OPCIONES, CHECKLIST_SALUD, TIPOS_VACUNA_COMUNES } from "@/lib/gatoOpciones";
 import {
   addGatoAction,
   addRefugioReportAction,
@@ -19,6 +21,8 @@ import {
   refugioLogoutAction,
   updateGatoEstadoAction,
   deleteGatoAction,
+  addVacunaAction,
+  deleteVacunaAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -159,8 +163,20 @@ export default async function RefugioPage({
                   <input name="sexo" className="input" placeholder="Macho / Hembra" />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-ink-soft">Edad aproximada</span>
+                  <span className="text-xs text-ink-soft">Edad aproximada (texto)</span>
                   <input name="edadAprox" className="input" placeholder="Ej. 1 año aprox." />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-ink-soft">Edad en meses (número, opcional)</span>
+                  <input type="number" min={0} max={300} name="edadMeses" className="input" placeholder="Ej. 8" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-ink-soft">Fecha de nacimiento (si se conoce)</span>
+                  <input type="date" name="fechaNacimiento" className="input" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-ink-soft">Raza</span>
+                  <input name="raza" className="input" placeholder="Ej. Mestizo / Doméstico de pelo corto" />
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-ink-soft">Estado</span>
@@ -177,21 +193,84 @@ export default async function RefugioPage({
                 <span className="text-xs text-ink-soft">Descripción</span>
                 <textarea name="descripcion" rows={2} className="input" />
               </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-ink-soft">Foto (opcional)</span>
-                <input
-                  type="file"
-                  name="foto"
-                  accept="image/*"
-                  capture="environment"
-                  className="input file:mr-3 file:rounded-lg file:border-0 file:bg-teal/10 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-teal-deep"
-                />
-                <span className="text-[11px] text-muted">
-                  Desde tu celular, esto te deja tomar la foto en el momento o elegir una que ya
-                  tengas guardada. Un gato con foto se ve en la sección pública de adopción; sin
-                  foto, no aparece ahí (sigue apareciendo aquí en tu panel).
-                </span>
-              </label>
+
+              <fieldset className="flex flex-col gap-1.5">
+                <legend className="text-xs font-semibold text-ink-soft mb-0.5">
+                  Protocolo de salud (aparece como sello en el diseño automático)
+                </legend>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {CHECKLIST_SALUD.map((c) => (
+                    <label key={c.key} className="flex items-center gap-1.5 text-sm text-ink">
+                      <input type="checkbox" name={c.key} />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="flex flex-col gap-1.5">
+                <legend className="text-xs font-semibold text-ink-soft mb-0.5">Personalidad</legend>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {PERSONALIDAD_OPCIONES.map((p) => (
+                    <label key={p} className="flex items-center gap-1.5 text-sm text-ink">
+                      <input type="checkbox" name="personalidad" value={p} />
+                      {p}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="flex flex-col gap-1.5">
+                <legend className="text-xs font-semibold text-ink-soft mb-0.5">
+                  Frases para el diseño automático (elige las que apliquen)
+                </legend>
+                <div className="flex flex-col gap-1.5">
+                  {FRASE_OPCIONES.map((f) => (
+                    <label key={f} className="flex items-center gap-1.5 text-sm text-ink">
+                      <input type="checkbox" name="frases" value={f} />
+                      {f}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div className="grid sm:grid-cols-3 gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-ink-soft">Foto 1 (opcional)</span>
+                  <input
+                    type="file"
+                    name="foto"
+                    accept="image/*"
+                    capture="environment"
+                    className="input file:mr-2 file:rounded-lg file:border-0 file:bg-teal/10 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-teal-deep"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-ink-soft">Foto 2 (opcional)</span>
+                  <input
+                    type="file"
+                    name="foto2"
+                    accept="image/*"
+                    capture="environment"
+                    className="input file:mr-2 file:rounded-lg file:border-0 file:bg-teal/10 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-teal-deep"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-ink-soft">Foto 3 (opcional)</span>
+                  <input
+                    type="file"
+                    name="foto3"
+                    accept="image/*"
+                    capture="environment"
+                    className="input file:mr-2 file:rounded-lg file:border-0 file:bg-teal/10 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-teal-deep"
+                  />
+                </label>
+              </div>
+              <span className="text-[11px] text-muted -mt-2">
+                Desde tu celular, esto te deja tomar la foto en el momento o elegir una que ya
+                tengas guardada. Con al menos una foto, el gato aparece en la sección pública de
+                adopción y puedes generar su diseño automático (flyer) para redes sociales.
+              </span>
               <button type="submit" className="btn-primary self-start">Guardar gato</button>
             </form>
           </details>
@@ -222,6 +301,32 @@ export default async function RefugioPage({
                 </div>
               </div>
               {g.descripcion && <p className="text-sm text-ink-soft">{g.descripcion}</p>}
+
+              {(g.personalidad.length > 0 || g.esterilizado || g.desparasitado || g.vacunado || g.sanoListo) && (
+                <div className="flex flex-wrap gap-1 mt-0.5">
+                  {g.personalidad.map((p) => (
+                    <span key={p} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-tint text-teal-deep">
+                      {p}
+                    </span>
+                  ))}
+                  {g.esterilizado && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-ochre-tint text-ochre">Esterilizado</span>}
+                  {g.desparasitado && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-ochre-tint text-ochre">Desparasitado</span>}
+                  {g.vacunado && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-ochre-tint text-ochre">Vacunado</span>}
+                  {g.sanoListo && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-ochre-tint text-ochre">Sano y listo</span>}
+                </div>
+              )}
+
+              {g.fotoUrl && (
+                <a
+                  href={`/gato/${g.id}/flyer`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] font-mono font-semibold text-ochre mt-0.5"
+                >
+                  Ver / descargar diseño automático →
+                </a>
+              )}
+
               <form action={updateGatoEstadoAction} className="flex items-center gap-2 mt-1">
                 <input type="hidden" name="gatoId" value={g.id} />
                 <select
@@ -242,6 +347,20 @@ export default async function RefugioPage({
                   Actualizar
                 </button>
               </form>
+
+              {g.estado === "ADOPTADO" && (
+                <a
+                  href={`/suscripcion?gatoId=${g.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] font-mono font-semibold text-rose"
+                >
+                  Configurar envíos automáticos de comida/arena →
+                </a>
+              )}
+
+              <GatoVacunas gato={g} />
+
               <form action={deleteGatoAction} className="mt-0.5">
                 <input type="hidden" name="gatoId" value={g.id} />
                 <DeleteGatoButton nombre={g.nombre} />
@@ -331,5 +450,72 @@ export default async function RefugioPage({
         </div>
       </section>
     </main>
+  );
+}
+
+/** Historial de vacunas de un gato + formulario para agregar una nueva --
+ * componente de servidor async aparte (en vez de resolver listVacunasByGato
+ * en el map de arriba) para no tener que precargar el historial de TODOS
+ * los gatos del refugio de una vez cuando la mayoría de las veces nadie va
+ * a abrir el <details>; aun así Next.js sigue renderizando esto en el
+ * servidor antes de mandar la página, así que no hay una segunda carga
+ * visible -- solo mantiene el código de arriba más simple de leer. */
+async function GatoVacunas({ gato }: { gato: { id: string } }) {
+  const vacunas = await listVacunasByGato(gato.id);
+  return (
+    <details className="mt-1 text-xs">
+      <summary className="cursor-pointer font-mono font-semibold text-teal list-none [&::-webkit-details-marker]:hidden">
+        Vacunas ({vacunas.length}) — ver / agregar
+      </summary>
+      <div className="mt-2 flex flex-col gap-2">
+        {vacunas.length === 0 && <p className="text-ink-soft">Sin vacunas registradas todavía.</p>}
+        {vacunas.map((v) => (
+          <div key={v.id} className="flex items-start justify-between gap-2 border-b border-line pb-1">
+            <div>
+              <p className="font-semibold text-ink">{v.tipoVacuna}</p>
+              <p className="text-ink-soft">
+                Aplicada: {v.fechaAplicacion}
+                {v.fechaRevacunacion ? ` · Próxima revacunación: ${v.fechaRevacunacion}` : ""}
+              </p>
+            </div>
+            <form action={deleteVacunaAction}>
+              <input type="hidden" name="vacunaId" value={v.id} />
+              <input type="hidden" name="gatoId" value={gato.id} />
+              <button type="submit" className="text-rose font-mono shrink-0">
+                Borrar
+              </button>
+            </form>
+          </div>
+        ))}
+        <form action={addVacunaAction} className="flex flex-col gap-1.5 mt-1 bg-paper-alt rounded-lg p-2">
+          <input type="hidden" name="gatoId" value={gato.id} />
+          <select name="tipoVacuna" required className="input !py-1 !text-xs" defaultValue="">
+            <option value="" disabled>
+              Tipo de vacuna...
+            </option>
+            {TIPOS_VACUNA_COMUNES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+            <option value="OTRA">Otra (especifica abajo)</option>
+          </select>
+          <input name="tipoVacunaOtra" className="input !py-1 !text-xs" placeholder="Si elegiste 'Otra', escribe cuál aquí" />
+          <div className="grid grid-cols-2 gap-1.5">
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] text-ink-soft">Fecha aplicada</span>
+              <input type="date" name="fechaAplicacion" required className="input !py-1 !text-xs" />
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] text-ink-soft">Próxima revacunación</span>
+              <input type="date" name="fechaRevacunacion" className="input !py-1 !text-xs" />
+            </label>
+          </div>
+          <button type="submit" className="btn-primary !py-1 !text-xs self-start">
+            Guardar vacuna
+          </button>
+        </form>
+      </div>
+    </details>
   );
 }

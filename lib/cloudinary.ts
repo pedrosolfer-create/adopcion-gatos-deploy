@@ -90,6 +90,19 @@ export async function subirFotoGato(file: File): Promise<string> {
   return subirImagen(file, "gatos");
 }
 
+/** Sube hasta 3 fotos de un gato (la principal + 2 adicionales) y regresa
+ * sus URLs en el mismo orden -- un elemento del arreglo es `undefined` si
+ * ese archivo venía vacío (campo opcional sin llenar) o si no se mandó.
+ * Las tres se suben en paralelo para no sumar la latencia de cada una. */
+export async function subirFotosGato(files: Array<File | null | undefined>): Promise<Array<string | undefined>> {
+  return Promise.all(
+    files.map(async (file) => {
+      if (!(file instanceof File) || file.size === 0) return undefined;
+      return subirFotoGato(file);
+    })
+  );
+}
+
 /** Igual que subirFotoGato pero para fotos de producto de la tienda (ver
  * app/reportes/actions.ts#addProductoAction). */
 export async function subirFotoProducto(file: File): Promise<string> {

@@ -128,6 +128,32 @@ CREATE TABLE IF NOT EXISTS "Gato" (
   "fotoUrl" TEXT
 );
 
+-- Columnas agregadas para el perfil ampliado del gato (múltiples fotos,
+-- edad numérica, ficha de salud, personalidad y frases para el flyer
+-- automático) -- "ADD COLUMN IF NOT EXISTS" para no romper una base que ya
+-- tenía "Gato" sin estas columnas.
+ALTER TABLE "Gato" ADD COLUMN IF NOT EXISTS "fotoUrl2" TEXT;
+ALTER TABLE "Gato" ADD COLUMN IF NOT EXISTS "fotoUrl3" TEXT;
+ALTER TABLE "Gato" ADD COLUMN IF NOT EXISTS "edadMeses" INTEGER;
+ALTER TABLE "Gato" ADD COLUMN IF NOT EXISTS "fechaNacimiento" TEXT;
+ALTER TABLE "Gato" ADD COLUMN IF NOT EXISTS "raza" TEXT;
+ALTER TABLE "Gato" ADD COLUMN IF NOT EXISTS "esterilizado" INTEGER;
+ALTER TABLE "Gato" ADD COLUMN IF NOT EXISTS "desparasitado" INTEGER;
+ALTER TABLE "Gato" ADD COLUMN IF NOT EXISTS "vacunado" INTEGER;
+ALTER TABLE "Gato" ADD COLUMN IF NOT EXISTS "sanoListo" INTEGER;
+ALTER TABLE "Gato" ADD COLUMN IF NOT EXISTS "personalidadJson" TEXT;
+ALTER TABLE "Gato" ADD COLUMN IF NOT EXISTS "frasesJson" TEXT;
+
+CREATE TABLE IF NOT EXISTS "VacunaGato" (
+  "id" TEXT PRIMARY KEY,
+  "gatoId" TEXT NOT NULL,
+  "createdAt" TEXT NOT NULL,
+  "tipoVacuna" TEXT NOT NULL,
+  "fechaAplicacion" TEXT NOT NULL,
+  "fechaRevacunacion" TEXT,
+  "notas" TEXT
+);
+
 CREATE TABLE IF NOT EXISTS "Producto" (
   "id" TEXT PRIMARY KEY,
   "createdAt" TEXT NOT NULL,
@@ -139,6 +165,12 @@ CREATE TABLE IF NOT EXISTS "Producto" (
   "stock" INTEGER,
   "activo" INTEGER NOT NULL DEFAULT 1
 );
+
+-- "categoria" identifica qué productos son comida/arena para poder
+-- ofrecerlos en el formulario de suscripción (reenvío automático) --
+-- ver Suscripcion más abajo. Nullable: un producto sin categoría (ej. el
+-- rascador Catit) simplemente no aparece como opción de suscripción.
+ALTER TABLE "Producto" ADD COLUMN IF NOT EXISTS "categoria" TEXT;
 
 -- Columnas UTM agregadas después del primer despliegue -- "ADD COLUMN IF NOT
 -- EXISTS" hace que esto sea seguro de correr también contra una base que ya
@@ -181,6 +213,55 @@ CREATE TABLE IF NOT EXISTS "Donativo" (
   "status" TEXT NOT NULL DEFAULT 'PENDIENTE',
   "mpPreferenceId" TEXT,
   "mpPaymentId" TEXT
+);
+
+-- ---------- Suscripciones de reenvío automático (comida/arena) ----------
+-- El adoptante autoriza el cobro recurrente UNA vez, con su tarjeta
+-- tokenizada del lado del cliente (Mercado Pago Bricks -- el número de
+-- tarjeta nunca toca este servidor, ver lib/mercadopago.ts). A partir de
+-- ahí, el motor de "Suscripciones" de Mercado Pago (preapproval) es quien
+-- cobra automáticamente en cada ciclo, reintenta si falla, etc. -- aquí
+-- solo se guarda el id de esa suscripción en Mercado Pago
+-- (mpPreapprovalId) para poder consultarla/cancelarla, nunca datos de la
+-- tarjeta en sí.
+CREATE TABLE IF NOT EXISTS "Suscripcion" (
+  "id" TEXT PRIMARY KEY,
+  "createdAt" TEXT NOT NULL,
+  "gatoId" TEXT,
+  "refugioId" TEXT,
+  "productoId" TEXT NOT NULL,
+  "cantidad" INTEGER NOT NULL DEFAULT 1,
+  "adoptanteNombre" TEXT NOT NULL,
+  "adoptanteTelefono" TEXT,
+  "adoptanteEmail" TEXT NOT NULL,
+  "frecuenciaDias" INTEGER NOT NULL,
+  "mpPreapprovalId" TEXT,
+  "mpStatus" TEXT,
+  "status" TEXT NOT NULL DEFAULT 'ACTIVA',
+  "proximoEnvio" TEXT,
+  -- fecha (igual a "proximoEnvio" en el momento de mandarlo) para la que ya
+  -- se mandó el recordatorio -- evita que el cron lo duplique si corre más
+  -- de una vez antes de que Mercado Pago confirme el cobro de ese ciclo.
+  "recordatorioEnviadoPara" TEXT,
+  "notas" TEXT
+);
+
+-- Un registro por cada ciclo de reenvío ya COBRADO -- se crea cuando llega
+-- la confirmación de pago de Mercado Pago (webhook "subscription_
+-- authorized_payment", ver app/api/mercadopago/webhook) y es lo que
+-- dispara mandar la confirmación por correo/WhatsApp al adoptante. No hay
+-- un paso de "confirmar antes de cobrar" -- el cobro lo hace solo el motor
+-- de Suscripciones de Mercado Pago; lo que se manda es un aviso de que ya
+-- se cobró y de que el envío va en camino.
+CREATE TABLE IF NOT EXISTS "EnvioSuscripcion" (
+  "id" TEXT PRIMARY KEY,
+  "suscripcionId" TEXT NOT NULL,
+  "createdAt" TEXT NOT NULL,
+  "status" TEXT NOT NULL,
+  "mpPaymentId" TEXT NOT NULL,
+  "montoCentavos" INTEGER,
+  "notificadoAt" TEXT,
+  "notas" TEXT
 );
 `;
 
@@ -309,6 +390,32 @@ export interface Gato {
   descripcion: string | null;
   estado: GatoEstado;
   fotoUrl: string | null;
+  fotoUrl2: string | null;
+  fotoUrl3: string | null;
+  edadMeses: number | null;
+  fechaNacimiento: string | null;
+  raza: string | null;
+  esterilizado: boolean | null;
+  desparasitado: boolean | null;
+  vacunado: boolean | null;
+  sanoListo: boolean | null;
+  /** Tags de personalidad elegidos en el formulario (ej. "Cariñoso",
+   * "Tranquilo", "Juguetón") -- se guardan como el texto exacto a mostrar,
+   * no una clave, mismo patrón que PedidoItem.nombre. */
+  personalidad: string[];
+  /** Frases de marketing elegidas para el flyer automático (ej. "Los
+   * gatos también cambian vidas") -- ver lib/gatoOpciones.ts. */
+  frases: string[];
+}
+
+export interface VacunaGato {
+  id: string;
+  gatoId: string;
+  createdAt: string;
+  tipoVacuna: string;
+  fechaAplicacion: string;
+  fechaRevacunacion: string | null;
+  notas: string | null;
 }
 
 export interface Producto {
@@ -321,6 +428,47 @@ export interface Producto {
   fotoUrl: string | null;
   stock: number | null;
   activo: boolean;
+  /** 'COMIDA' | 'ARENA' | null -- qué productos se pueden ofrecer como
+   * reenvío automático (ver Suscripcion). Un producto sin categoría (ej.
+   * un rascador) no aparece como opción de suscripción. */
+  categoria: string | null;
+}
+
+export type SuscripcionStatus = "ACTIVA" | "PAUSADA" | "CANCELADA";
+
+export interface Suscripcion {
+  id: string;
+  createdAt: string;
+  gatoId: string | null;
+  refugioId: string | null;
+  productoId: string;
+  cantidad: number;
+  adoptanteNombre: string;
+  adoptanteTelefono: string | null;
+  adoptanteEmail: string;
+  frecuenciaDias: number;
+  /** Id de la suscripción (preapproval) del lado de Mercado Pago -- null
+   * hasta que crearSuscripcionMP() responde exitosamente. */
+  mpPreapprovalId: string | null;
+  /** Último status conocido del lado de Mercado Pago (authorized,
+   * cancelled, paused, pending) -- se actualiza vía webhook. */
+  mpStatus: string | null;
+  status: SuscripcionStatus;
+  proximoEnvio: string | null;
+  notas: string | null;
+}
+
+export type EnvioSuscripcionStatus = "COBRADO" | "FALLIDO";
+
+export interface EnvioSuscripcion {
+  id: string;
+  suscripcionId: string;
+  createdAt: string;
+  status: EnvioSuscripcionStatus;
+  mpPaymentId: string;
+  montoCentavos: number | null;
+  notificadoAt: string | null;
+  notas: string | null;
 }
 
 export interface PedidoItem {
@@ -745,7 +893,43 @@ export async function verifyRefugioLogin(usuario: string, password: string): Pro
 // ---------- Gatos ----------
 
 function rowToGato(row: unknown): Gato {
-  return row as Gato;
+  const r = row as Record<string, unknown>;
+  return {
+    id: r.id as string,
+    refugioId: r.refugioId as string,
+    createdAt: r.createdAt as string,
+    nombre: r.nombre as string,
+    sexo: (r.sexo as string) ?? null,
+    edadAprox: (r.edadAprox as string) ?? null,
+    descripcion: (r.descripcion as string) ?? null,
+    estado: r.estado as GatoEstado,
+    fotoUrl: (r.fotoUrl as string) ?? null,
+    fotoUrl2: (r.fotoUrl2 as string) ?? null,
+    fotoUrl3: (r.fotoUrl3 as string) ?? null,
+    edadMeses: (r.edadMeses as number) ?? null,
+    fechaNacimiento: (r.fechaNacimiento as string) ?? null,
+    raza: (r.raza as string) ?? null,
+    esterilizado: toBool(r.esterilizado),
+    desparasitado: toBool(r.desparasitado),
+    vacunado: toBool(r.vacunado),
+    sanoListo: toBool(r.sanoListo),
+    personalidad: parseJsonArray(r.personalidadJson),
+    frases: parseJsonArray(r.frasesJson),
+  };
+}
+
+/** Parseo tolerante de un arreglo JSON guardado en una columna TEXT --
+ * regresa [] si la columna es null o si por alguna razón el JSON no es
+ * válido, en vez de tronar la página completa por un solo gato con un
+ * dato corrupto. */
+function parseJsonArray(value: unknown): string[] {
+  if (!value || typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function createGato(input: {
@@ -756,13 +940,26 @@ export async function createGato(input: {
   descripcion?: string;
   estado?: GatoEstado;
   fotoUrl?: string;
+  fotoUrl2?: string;
+  fotoUrl3?: string;
+  edadMeses?: number;
+  fechaNacimiento?: string;
+  raza?: string;
+  esterilizado?: boolean;
+  desparasitado?: boolean;
+  vacunado?: boolean;
+  sanoListo?: boolean;
+  personalidad?: string[];
+  frases?: string[];
 }): Promise<Gato> {
   await ensureSchema();
   const id = randomUUID();
   const createdAt = new Date().toISOString();
   await pool.query(
-    `INSERT INTO "Gato" ("id", "refugioId", "createdAt", "nombre", "sexo", "edadAprox", "descripcion", "estado", "fotoUrl")
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    `INSERT INTO "Gato" ("id", "refugioId", "createdAt", "nombre", "sexo", "edadAprox", "descripcion", "estado",
+      "fotoUrl", "fotoUrl2", "fotoUrl3", "edadMeses", "fechaNacimiento", "raza",
+      "esterilizado", "desparasitado", "vacunado", "sanoListo", "personalidadJson", "frasesJson")
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
     [
       id,
       input.refugioId,
@@ -773,6 +970,17 @@ export async function createGato(input: {
       input.descripcion ?? null,
       input.estado ?? "DISPONIBLE",
       input.fotoUrl ?? null,
+      input.fotoUrl2 ?? null,
+      input.fotoUrl3 ?? null,
+      input.edadMeses ?? null,
+      input.fechaNacimiento ?? null,
+      input.raza ?? null,
+      boolToInt(input.esterilizado),
+      boolToInt(input.desparasitado),
+      boolToInt(input.vacunado),
+      boolToInt(input.sanoListo),
+      input.personalidad && input.personalidad.length > 0 ? JSON.stringify(input.personalidad) : null,
+      input.frases && input.frases.length > 0 ? JSON.stringify(input.frases) : null,
     ]
   );
   return (await getGatoById(id))!;
@@ -908,14 +1116,15 @@ export async function createProducto(input: {
   fotoUrl?: string;
   stock?: number;
   activo?: boolean;
+  categoria?: string;
 }): Promise<Producto> {
   await ensureSchema();
   const id = randomUUID();
   const createdAt = new Date().toISOString();
   await pool.query(
     `INSERT INTO "Producto" ("id", "createdAt", "nombre", "descripcion", "precioNormalCentavos",
-      "precioAdoptanteCentavos", "fotoUrl", "stock", "activo")
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      "precioAdoptanteCentavos", "fotoUrl", "stock", "activo", "categoria")
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       id,
       createdAt,
@@ -926,9 +1135,28 @@ export async function createProducto(input: {
       input.fotoUrl ?? null,
       input.stock ?? null,
       input.activo === false ? 0 : 1,
+      input.categoria ?? null,
     ]
   );
   return (await getProductoById(id))!;
+}
+
+/** Para que el equipo pueda marcar cuáles productos ya existentes son
+ * "comida"/"arena" sin tener que volver a crearlos (ej. los 4 productos
+ * agregados antes de que existiera esta columna). */
+export async function setProductoCategoria(id: string, categoria: string | null): Promise<void> {
+  await ensureSchema();
+  await pool.query(`UPDATE "Producto" SET "categoria" = $1 WHERE "id" = $2`, [categoria, id]);
+}
+
+/** Productos activos que se pueden ofrecer como reenvío automático
+ * (categoria = 'COMIDA' o 'ARENA'). */
+export async function listProductosSuscribibles(): Promise<Producto[]> {
+  await ensureSchema();
+  const { rows } = await pool.query(
+    `SELECT * FROM "Producto" WHERE "activo" = 1 AND "categoria" IN ('COMIDA', 'ARENA') ORDER BY "categoria", "nombre"`
+  );
+  return rows.map(rowToProducto);
 }
 
 export async function getProductoById(id: string): Promise<Producto | null> {
@@ -1067,6 +1295,243 @@ export async function updatePedidoStatus(
     `UPDATE "Pedido" SET "status" = $1, "mpPaymentId" = COALESCE($2, "mpPaymentId") WHERE "id" = $3`,
     [status, mpPaymentId ?? null, id]
   );
+}
+
+// ---------- Vacunas ----------
+
+function rowToVacuna(row: unknown): VacunaGato {
+  const r = row as Record<string, unknown>;
+  return {
+    id: r.id as string,
+    gatoId: r.gatoId as string,
+    createdAt: r.createdAt as string,
+    tipoVacuna: r.tipoVacuna as string,
+    fechaAplicacion: r.fechaAplicacion as string,
+    fechaRevacunacion: (r.fechaRevacunacion as string) ?? null,
+    notas: (r.notas as string) ?? null,
+  };
+}
+
+export async function createVacunaGato(input: {
+  gatoId: string;
+  tipoVacuna: string;
+  fechaAplicacion: string;
+  fechaRevacunacion?: string;
+  notas?: string;
+}): Promise<VacunaGato> {
+  await ensureSchema();
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO "VacunaGato" ("id", "gatoId", "createdAt", "tipoVacuna", "fechaAplicacion", "fechaRevacunacion", "notas")
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [id, input.gatoId, createdAt, input.tipoVacuna, input.fechaAplicacion, input.fechaRevacunacion ?? null, input.notas ?? null]
+  );
+  const { rows } = await pool.query(`SELECT * FROM "VacunaGato" WHERE "id" = $1`, [id]);
+  return rowToVacuna(rows[0]);
+}
+
+export async function listVacunasByGato(gatoId: string): Promise<VacunaGato[]> {
+  await ensureSchema();
+  const { rows } = await pool.query(
+    `SELECT * FROM "VacunaGato" WHERE "gatoId" = $1 ORDER BY "fechaAplicacion" DESC`,
+    [gatoId]
+  );
+  return rows.map(rowToVacuna);
+}
+
+export async function deleteVacunaGato(id: string): Promise<void> {
+  await ensureSchema();
+  await pool.query(`DELETE FROM "VacunaGato" WHERE "id" = $1`, [id]);
+}
+
+// ---------- Suscripciones (reenvío automático de comida/arena) ----------
+
+function rowToSuscripcion(row: unknown): Suscripcion {
+  const r = row as Record<string, unknown>;
+  return {
+    id: r.id as string,
+    createdAt: r.createdAt as string,
+    gatoId: (r.gatoId as string) ?? null,
+    refugioId: (r.refugioId as string) ?? null,
+    productoId: r.productoId as string,
+    cantidad: r.cantidad as number,
+    adoptanteNombre: r.adoptanteNombre as string,
+    adoptanteTelefono: (r.adoptanteTelefono as string) ?? null,
+    adoptanteEmail: r.adoptanteEmail as string,
+    frecuenciaDias: r.frecuenciaDias as number,
+    mpPreapprovalId: (r.mpPreapprovalId as string) ?? null,
+    mpStatus: (r.mpStatus as string) ?? null,
+    status: r.status as SuscripcionStatus,
+    proximoEnvio: (r.proximoEnvio as string) ?? null,
+    notas: (r.notas as string) ?? null,
+  };
+}
+
+export async function createSuscripcion(input: {
+  gatoId?: string;
+  refugioId?: string;
+  productoId: string;
+  cantidad?: number;
+  adoptanteNombre: string;
+  adoptanteTelefono?: string;
+  adoptanteEmail: string;
+  frecuenciaDias: number;
+  mpPreapprovalId?: string;
+  mpStatus?: string;
+  proximoEnvio?: string;
+  notas?: string;
+}): Promise<Suscripcion> {
+  await ensureSchema();
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO "Suscripcion" ("id", "createdAt", "gatoId", "refugioId", "productoId", "cantidad",
+      "adoptanteNombre", "adoptanteTelefono", "adoptanteEmail", "frecuenciaDias",
+      "mpPreapprovalId", "mpStatus", "status", "proximoEnvio", "notas")
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVA', $13, $14)`,
+    [
+      id,
+      createdAt,
+      input.gatoId ?? null,
+      input.refugioId ?? null,
+      input.productoId,
+      input.cantidad ?? 1,
+      input.adoptanteNombre,
+      input.adoptanteTelefono ?? null,
+      input.adoptanteEmail,
+      input.frecuenciaDias,
+      input.mpPreapprovalId ?? null,
+      input.mpStatus ?? null,
+      input.proximoEnvio ?? null,
+      input.notas ?? null,
+    ]
+  );
+  return (await getSuscripcionById(id))!;
+}
+
+export async function actualizarSuscripcionMP(
+  id: string,
+  input: { mpStatus?: string; proximoEnvio?: string }
+): Promise<void> {
+  await ensureSchema();
+  await pool.query(
+    `UPDATE "Suscripcion" SET "mpStatus" = COALESCE($1, "mpStatus"), "proximoEnvio" = COALESCE($2, "proximoEnvio") WHERE "id" = $3`,
+    [input.mpStatus ?? null, input.proximoEnvio ?? null, id]
+  );
+}
+
+export async function getSuscripcionByPreapprovalId(mpPreapprovalId: string): Promise<Suscripcion | null> {
+  await ensureSchema();
+  const { rows } = await pool.query(`SELECT * FROM "Suscripcion" WHERE "mpPreapprovalId" = $1`, [mpPreapprovalId]);
+  return rows[0] ? rowToSuscripcion(rows[0]) : null;
+}
+
+export async function getSuscripcionById(id: string): Promise<Suscripcion | null> {
+  await ensureSchema();
+  const { rows } = await pool.query(`SELECT * FROM "Suscripcion" WHERE "id" = $1`, [id]);
+  return rows[0] ? rowToSuscripcion(rows[0]) : null;
+}
+
+export async function listSuscripciones(refugioId?: string): Promise<Suscripcion[]> {
+  await ensureSchema();
+  const { rows } = refugioId
+    ? await pool.query(`SELECT * FROM "Suscripcion" WHERE "refugioId" = $1 ORDER BY "proximoEnvio" ASC`, [refugioId])
+    : await pool.query(`SELECT * FROM "Suscripcion" ORDER BY "proximoEnvio" ASC`);
+  return rows.map(rowToSuscripcion);
+}
+
+export async function updateSuscripcionStatus(id: string, status: SuscripcionStatus): Promise<void> {
+  await ensureSchema();
+  await pool.query(`UPDATE "Suscripcion" SET "status" = $1 WHERE "id" = $2`, [status, id]);
+}
+
+// ---------- Envíos de suscripción (historial de cobros ya procesados) ----------
+
+function rowToEnvio(row: unknown): EnvioSuscripcion {
+  const r = row as Record<string, unknown>;
+  return {
+    id: r.id as string,
+    suscripcionId: r.suscripcionId as string,
+    createdAt: r.createdAt as string,
+    status: r.status as EnvioSuscripcionStatus,
+    mpPaymentId: r.mpPaymentId as string,
+    montoCentavos: (r.montoCentavos as number) ?? null,
+    notificadoAt: (r.notificadoAt as string) ?? null,
+    notas: (r.notas as string) ?? null,
+  };
+}
+
+/** Se llama desde el webhook de Mercado Pago cuando confirma un cobro (o
+ * intento fallido) de un ciclo de suscripción -- ver app/api/mercadopago/
+ * webhook. `mpPaymentId` es único por cobro real, así que sirve para no
+ * procesar el mismo dos veces si Mercado Pago reintenta la notificación
+ * (comportamiento normal de su lado, documentado). */
+export async function createEnvioSuscripcion(input: {
+  suscripcionId: string;
+  status: EnvioSuscripcionStatus;
+  mpPaymentId: string;
+  montoCentavos?: number;
+  notas?: string;
+}): Promise<EnvioSuscripcion> {
+  await ensureSchema();
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO "EnvioSuscripcion" ("id", "suscripcionId", "createdAt", "status", "mpPaymentId", "montoCentavos", "notas")
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [id, input.suscripcionId, createdAt, input.status, input.mpPaymentId, input.montoCentavos ?? null, input.notas ?? null]
+  );
+  return rowToEnvio((await pool.query(`SELECT * FROM "EnvioSuscripcion" WHERE "id" = $1`, [id])).rows[0]);
+}
+
+export async function getEnvioSuscripcionPorPago(mpPaymentId: string): Promise<EnvioSuscripcion | null> {
+  await ensureSchema();
+  const { rows } = await pool.query(`SELECT * FROM "EnvioSuscripcion" WHERE "mpPaymentId" = $1`, [mpPaymentId]);
+  return rows[0] ? rowToEnvio(rows[0]) : null;
+}
+
+export async function marcarEnvioNotificado(id: string): Promise<void> {
+  await ensureSchema();
+  await pool.query(`UPDATE "EnvioSuscripcion" SET "notificadoAt" = $1 WHERE "id" = $2`, [
+    new Date().toISOString(),
+    id,
+  ]);
+}
+
+export async function listEnviosBySuscripcion(suscripcionId: string): Promise<EnvioSuscripcion[]> {
+  await ensureSchema();
+  const { rows } = await pool.query(
+    `SELECT * FROM "EnvioSuscripcion" WHERE "suscripcionId" = $1 ORDER BY "createdAt" DESC`,
+    [suscripcionId]
+  );
+  return rows.map(rowToEnvio);
+}
+
+export async function listEnviosSinNotificar(): Promise<EnvioSuscripcion[]> {
+  await ensureSchema();
+  const { rows } = await pool.query(`SELECT * FROM "EnvioSuscripcion" WHERE "notificadoAt" IS NULL ORDER BY "createdAt" ASC`);
+  return rows.map(rowToEnvio);
+}
+
+/** Suscripciones activas cuyo próximo cobro es en/antes de la fecha dada Y
+ * todavía no se les mandó recordatorio para esa fecha -- lo usa el cron de
+ * recordatorios (ver app/api/cron/suscripciones). */
+export async function listSuscripcionesParaRecordar(fechaLimiteISO: string): Promise<Suscripcion[]> {
+  await ensureSchema();
+  const { rows } = await pool.query(
+    `SELECT * FROM "Suscripcion"
+     WHERE "status" = 'ACTIVA' AND "proximoEnvio" IS NOT NULL AND "proximoEnvio" <= $1
+       AND ("recordatorioEnviadoPara" IS NULL OR "recordatorioEnviadoPara" <> "proximoEnvio")
+     ORDER BY "proximoEnvio" ASC`,
+    [fechaLimiteISO]
+  );
+  return rows.map(rowToSuscripcion);
+}
+
+export async function marcarRecordatorioSuscripcionEnviado(id: string, proximoEnvio: string): Promise<void> {
+  await ensureSchema();
+  await pool.query(`UPDATE "Suscripcion" SET "recordatorioEnviadoPara" = $1 WHERE "id" = $2`, [proximoEnvio, id]);
 }
 
 export default pool;

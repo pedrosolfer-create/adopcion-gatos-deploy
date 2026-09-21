@@ -5,6 +5,8 @@ import {
   countLeadsSince,
   listProductosTodos,
   listPedidos,
+  listSuscripciones,
+  listEnviosBySuscripcion,
 } from "@/lib/db";
 import { computeKpis, trendSeries, totalForReport, SOURCE_META } from "@/lib/reportes";
 import { getSession } from "@/lib/auth";
@@ -18,6 +20,7 @@ import {
   StrategyStatusPill,
   ImprovementStatusPill,
   PedidoStatusPill,
+  SuscripcionStatusPill,
   STRATEGY_STATUSES,
   IMPROVEMENT_STATUSES,
   PEDIDO_STATUSES,
@@ -34,10 +37,12 @@ import {
   changeImprovementStatusAction,
   addProductoAction,
   toggleProductoActivoAction,
+  setProductoCategoriaAction,
   changePedidoStatusAction,
   equipoLoginAction,
   equipoLogoutAction,
 } from "./actions";
+import { cancelarSuscripcionAction } from "@/app/suscripcion/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +78,11 @@ export default async function ReportesPage({
   const improvements = await listImprovements();
   const productos = await listProductosTodos();
   const pedidos = await listPedidos(30);
+  const suscripciones = await listSuscripciones();
+  const enviosPorSuscripcion = await Promise.all(
+    suscripciones.map(async (s) => ({ id: s.id, envios: await listEnviosBySuscripcion(s.id) }))
+  );
+  const enviosMap = new Map(enviosPorSuscripcion.map((e) => [e.id, e.envios]));
   const cloudinaryConfigurado = isCloudinaryConfigured();
   const totalRefugiosPendiente = pedidos
     .filter((pe) => pe.status === "PAGADO")
@@ -317,7 +327,7 @@ export default async function ReportesPage({
       </section>
 
       {/* ---------- Tienda ---------- */}
-      <section className="flex flex-col gap-3 pb-8">
+      <section className="flex flex-col gap-3">
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-bold text-teal-deep">Tienda</h2>
           <details className="group">
@@ -389,13 +399,25 @@ export default async function ReportesPage({
                 Normal: {formatMXN(p.precioNormalCentavos)} · Adoptante: {formatMXN(p.precioAdoptanteCentavos)}
                 {p.stock !== null && ` · Stock: ${p.stock}`}
               </p>
-              <form action={toggleProductoActivoAction} className="mt-1">
-                <input type="hidden" name="id" value={p.id} />
-                <input type="hidden" name="activo" value={p.activo ? "0" : "1"} />
-                <button type="submit" className="text-xs font-mono font-semibold text-teal hover:text-rose">
-                  {p.activo ? "Ocultar de la tienda" : "Mostrar en la tienda"}
-                </button>
-              </form>
+              <div className="flex items-center gap-3 mt-1">
+                <form action={toggleProductoActivoAction}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <input type="hidden" name="activo" value={p.activo ? "0" : "1"} />
+                  <button type="submit" className="text-xs font-mono font-semibold text-teal hover:text-rose">
+                    {p.activo ? "Ocultar de la tienda" : "Mostrar en la tienda"}
+                  </button>
+                </form>
+                <form action={setProductoCategoriaAction} className="flex items-center gap-1.5">
+                  <input type="hidden" name="id" value={p.id} />
+                  <span className="text-[11px] text-muted">Reenvío automático:</span>
+                  <AutoSubmitSelect
+                    name="categoria"
+                    defaultValue={p.categoria ?? ""}
+                    options={["", "COMIDA", "ARENA"]}
+                    labels={{ "": "No aplica", COMIDA: "Comida", ARENA: "Arena" }}
+                  />
+                </form>
+              </div>
             </div>
           ))}
         </div>
@@ -459,6 +481,78 @@ export default async function ReportesPage({
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ---------- Suscripciones (reenvío automático de comida/arena) ---------- */}
+      <section className="flex flex-col gap-3 pb-8">
+        <div>
+          <h2 className="text-lg font-bold text-teal-deep">Suscripciones de reenvío automático</h2>
+          <p className="text-xs text-ink-soft mt-1">
+            El cobro recurrente lo hace solo el motor de Suscripciones de Mercado Pago -- aquí solo se
+            ve el estado y el historial. Márcalo como &ldquo;Reenvío automático&rdquo; en un producto de
+            la Tienda de arriba para que aparezca como opción en{" "}
+            <a href="/suscripcion" className="underline">
+              /suscripcion
+            </a>
+            .
+          </p>
+        </div>
+
+        <div className="flex flex-col divide-y divide-line rounded-xl border border-line bg-white">
+          {suscripciones.length === 0 && (
+            <p className="p-4 text-sm text-ink-soft">Aún no hay suscripciones activas.</p>
+          )}
+          {suscripciones.map((s) => {
+            const producto = productos.find((p) => p.id === s.productoId);
+            const envios = enviosMap.get(s.id) ?? [];
+            return (
+              <div key={s.id} className="p-4 flex flex-col gap-1.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-sm font-semibold text-ink">{s.adoptanteNombre}</span>
+                    <p className="text-xs text-muted font-mono">
+                      {[s.adoptanteTelefono, s.adoptanteEmail].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <SuscripcionStatusPill status={s.status} />
+                </div>
+                <p className="text-sm text-ink-soft">
+                  {s.cantidad}× {producto?.nombre ?? "producto eliminado"} cada {s.frecuenciaDias} días
+                </p>
+                <p className="text-xs font-mono text-ink-soft">
+                  {s.proximoEnvio ? `Próximo cobro: ${new Date(s.proximoEnvio).toLocaleDateString("es-MX")}` : "Sin próximo cobro programado"}
+                  {s.mpStatus && ` · Mercado Pago: ${s.mpStatus}`}
+                </p>
+                {envios.length > 0 && (
+                  <details className="group">
+                    <summary className="cursor-pointer text-xs font-mono font-semibold text-teal list-none [&::-webkit-details-marker]:hidden">
+                      Historial de envíos ({envios.length})
+                    </summary>
+                    <ul className="mt-2 text-xs text-ink-soft flex flex-col gap-1">
+                      {envios.map((e) => (
+                        <li key={e.id} className="font-mono">
+                          {new Date(e.createdAt).toLocaleDateString("es-MX")} ·{" "}
+                          {e.status === "COBRADO" ? "Cobrado" : "Falló"}
+                          {e.montoCentavos !== null && ` · ${formatMXN(e.montoCentavos)}`}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {s.status === "ACTIVA" && (
+                  <form action={cancelarSuscripcionAction} className="mt-1">
+                    <input type="hidden" name="suscripcionId" value={s.id} />
+                    <input type="hidden" name="mpPreapprovalId" value={s.mpPreapprovalId ?? ""} />
+                    <input type="hidden" name="volverA" value="/reportes" />
+                    <button type="submit" className="text-xs font-mono font-semibold text-teal hover:text-rose">
+                      Cancelar suscripción
+                    </button>
+                  </form>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
     </main>

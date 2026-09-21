@@ -92,3 +92,24 @@ export function ImprovementStatusPill({ status }: { status: string }) {
 export const STRATEGY_STATUSES = Object.keys(STRATEGY_LABEL);
 export const IMPROVEMENT_STATUSES = Object.keys(IMPROVEMENT_LABEL);
 export { STRATEGY_LABEL, IMPROVEMENT_LABEL };
+
+const SUSCRIPCION_TONE: Record<string, Tone> = {
+  ACTIVA: "good",
+  PAUSADA: "warning",
+  CANCELADA: "critical",
+};
+const SUSCRIPCION_LABEL: Record<string, string> = {
+  ACTIVA: "Activa",
+  PAUSADA: "Pausada",
+  CANCELADA: "Cancelada",
+};
+
+export function SuscripcionStatusPill({ status }: { status: string }) {
+  const tone = SUSCRIPCION_TONE[status] ?? "neutral";
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-mono font-medium ${TONE_STYLES[tone]}`}>
+      <span aria-hidden>{TONE_ICON[tone]}</span>
+      {SUSCRIPCION_LABEL[status] ?? status}
+    </span>
+  );
+}
