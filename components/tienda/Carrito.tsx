@@ -114,4 +114,157 @@ export function Carrito({
   const totalCentavos = Object.entries(cart).reduce((sum, [id, cantidad]) => {
     const p = productoPorId.get(id);
     if (!p) return sum;
-    const precio = esAdoptante ? p.precioAdoptanteCentavos :
+    const precio = esAdoptante ? p.precioAdoptanteCentavos : p.precioNormalCentavos;
+    return sum + precio * cantidad;
+  }, 0);
+  const montoRefugiosCentavos = Math.round(totalCentavos * PORCENTAJE_REFUGIOS);
+
+  function scrollAResumen() {
+    document.getElementById(ID_RESUMEN)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function agregarAlCarrito(id: string, cantidad: number) {
+    setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + cantidad }));
+  }
+
+  /** "Comprar ahora": reemplaza la selección actual del carrito por
+   * únicamente este producto y salta directo al formulario de pago --
+   * como el botón "Comprar ahora" de otras tiendas en línea, para no
+   * obligar a pasar primero por "Agregar al carrito". */
+  function comprarAhora(id: string, cantidad: number) {
+    setCart({ [id]: cantidad });
+    setCheckoutOpen(true);
+    setTimeout(scrollAResumen, 50);
+  }
+
+  function removeFromCart(id: string) {
+    setCart((c) => {
+      const next = { ...c };
+      if (!next[id]) return next;
+      next[id] -= 1;
+      if (next[id] <= 0) delete next[id];
+      return next;
+    });
+  }
+
+  const itemsJson = JSON.stringify(
+    Object.entries(cart).map(([productoId, cantidad]) => ({ productoId, cantidad }))
+  );
+
+  if (productos.length === 0) {
+    return (
+      <p className="text-sm text-[var(--rescue-ink)]/70">
+        Todavía no hay productos en la tienda -- vuelve pronto.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid lg:grid-cols-3 gap-6 items-start">
+      <div className="lg:col-span-2 grid sm:grid-cols-2 gap-4">
+        {productos.map((p) => (
+          <ProductoCard key={p.id} producto={p} onAgregar={agregarAlCarrito} onComprarAhora={comprarAhora} />
+        ))}
+      </div>
+
+      {/* ---------- Carrito / checkout ---------- */}
+      <div id={ID_RESUMEN} className="lg:sticky lg:top-6 rounded-xl bg-[var(--rescue-ink)] text-white p-5 flex flex-col gap-3 scroll-mt-6">
+        <RibbonBanner tone="accent" className="self-start !py-1.5 !px-3 text-xs">
+          Tu carrito
+        </RibbonBanner>
+
+        {cartCount === 0 && <p className="text-sm text-white/70 mt-2">Todavía no has agregado productos.</p>}
+
+        {cartCount > 0 && (
+          <>
+            <ul className="text-sm flex flex-col gap-1 mt-2">
+              {Object.entries(cart).map(([id, cantidad]) => {
+                const p = productoPorId.get(id);
+                if (!p) return null;
+                const precio = esAdoptante ? p.precioAdoptanteCentavos : p.precioNormalCentavos;
+                return (
+                  <li key={id} className="flex justify-between gap-2 items-center">
+                    <span>
+                      {cantidad}× {p.nombre}
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span className="font-mono">{formatMXN(precio * cantidad)}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFromCart(id)}
+                        aria-label={`Quitar una unidad de ${p.nombre}`}
+                        className="w-5 h-5 rounded-full bg-white/15 font-bold text-xs shrink-0"
+                      >
+                        −
+                      </button>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <label className="flex items-center gap-2 text-xs text-white/80 mt-2">
+              <input
+                type="checkbox"
+                checked={esAdoptante}
+                onChange={(e) => setEsAdoptante(e.target.checked)}
+              />
+              Ya adopté un gato aquí (aplica el 10% de descuento de adoptante)
+            </label>
+
+            <div className="flex justify-between items-baseline border-t border-white/15 pt-2 mt-1">
+              <span className="text-sm font-semibold">Total</span>
+              <span className="font-mono font-extrabold text-xl text-[var(--rescue-accent)]">
+                {formatMXN(totalCentavos)}
+              </span>
+            </div>
+            <p className="text-[11px] text-white/60 -mt-1">
+              De esto, {formatMXN(montoRefugiosCentavos)} (10%) se destinan a los refugios.
+            </p>
+
+            {!checkoutOpen && (
+              <button
+                type="button"
+                onClick={() => setCheckoutOpen(true)}
+                className="rescue-ribbon rescue-display bg-[var(--rescue-accent)] text-[var(--rescue-ink)] px-4 py-2.5 font-extrabold uppercase text-sm mt-2"
+              >
+                Continuar pedido →
+              </button>
+            )}
+
+            {checkoutOpen && (
+              <form action={submitPedidoAction} className="flex flex-col gap-2 mt-2 text-sm">
+                <input type="hidden" name="itemsJson" value={itemsJson} />
+                <input type="hidden" name="esAdoptante" value={esAdoptante ? "1" : "0"} />
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-white/70">Tu nombre *</span>
+                  <input name="compradorNombre" required className="input text-[var(--rescue-ink)]" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-white/70">Teléfono (WhatsApp) *</span>
+                  <input name="compradorTelefono" required type="tel" className="input text-[var(--rescue-ink)]" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-white/70">Correo (opcional)</span>
+                  <input name="compradorEmail" type="email" className="input text-[var(--rescue-ink)]" />
+                </label>
+                <p className="text-[11px] text-white/60 mt-1">
+                  {pagoEnLineaDisponible
+                    ? "Al confirmar, te llevamos a pagar con tarjeta, OXXO o transferencia (Mercado Pago)."
+                    : "Todavía no hay pago en línea conectado -- al enviar, te pasamos a WhatsApp para " +
+                      "coordinar cómo pagas (transferencia, OXXO, etc.)."}
+                </p>
+                <button
+                  type="submit"
+                  className="rescue-ribbon rescue-display bg-[var(--rescue-accent)] text-[var(--rescue-ink)] px-4 py-2.5 font-extrabold uppercase text-sm mt-1"
+                >
+                  {pagoEnLineaDisponible ? "Ir a pagar →" : "Confirmar pedido →"}
+                </button>
+              </form>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
