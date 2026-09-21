@@ -52,8 +52,7 @@ export function LoginForm({
         </button>
         {registerHref && (
           
-            <a
-              href={registerHref}
+            href={registerHref}
             className="text-center text-xs font-semibold text-teal hover:text-teal-deep hover:underline"
           >
             {registerLabel ?? "¿Aún no estás registrado? Regístrate aquí"}
