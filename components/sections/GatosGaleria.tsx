@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { RibbonBanner } from "@/components/rescue/RibbonBanner";
 import type { Gato } from "@/lib/db";
 import type { CampaignParams } from "@/components/sections/AdoptaSection";
@@ -20,24 +20,14 @@ function gatoHref(campaign: CampaignParams, gatoNombre: string): string {
   return qs.toString();
 }
 
-/** Px de arrastre horizontal a partir de los cuales un gesto cuenta como
- * swipe (avanza/retrocede de gato) en vez de snap-back. */
-const SWIPE_THRESHOLD = 90;
-/** Px de arrastre por debajo de los cuales un pointerUp cuenta como tap
- * (abre el lightbox) en vez de un intento fallido de swipe. */
-const TAP_THRESHOLD = 6;
-/** Debe coincidir con la duración de transición usada en los estilos de
- * abajo -- se usa también para el timeout que aplica el cambio de índice
- * después de que la tarjeta termina de animarse fuera de pantalla. */
-const EXIT_DURATION = 220;
-
 /**
- * Galería de gatos disponibles en formato swipe: se muestra un gato a la
- * vez, en tarjetas apiladas al estilo "dating app" -- se desliza (o se
- * usan las flechas) para pasar al siguiente/anterior, y un tap sin
- * arrastre abre el lightbox con la foto ampliada y el botón "Quiero
- * adoptar" -- mismo comportamiento de siempre, solo cambia cómo se
- * navega entre gatos.
+ * Galería de gatos disponibles en formato carrusel: se ven varias tarjetas
+ * a la vez (hasta 4 en pantallas grandes), cada una con el flyer
+ * auto-generado del gato -- sus 3 fotos + nombre/edad/personalidad/salud ya
+ * combinados en una sola imagen por /gato/[id]/flyer (ver ese route.tsx).
+ * Se desliza de una tarjeta a la vez hacia los lados, con gesto táctil
+ * nativo (scroll-snap) o con las flechas. Un tap sobre una tarjeta abre el
+ * lightbox con el flyer ampliado y el botón "Quiero adoptar".
  */
 export function GatosGaleria({
   campaign,
@@ -47,165 +37,83 @@ export function GatosGaleria({
   gatosDisponibles: Gato[];
 }) {
   const [seleccionado, setSeleccionado] = useState<Gato | null>(null);
-  const [index, setIndex] = useState(0);
-  const [dragX, setDragX] = useState(0);
-  const [arrastrando, setArrastrando] = useState(false);
-  const [exitDir, setExitDir] = useState<"left" | "right" | null>(null);
-  const startXRef = useRef(0);
+  const trackRef = useRef<HTMLDivElement | null>(null);
 
   const total = gatosDisponibles.length;
-  const safeIndex = total > 0 ? ((index % total) + total) % total : 0;
-
-  function avanzar(direccion: "left" | "right") {
-    if (total <= 1) return;
-    setExitDir(direccion);
-    window.setTimeout(() => {
-      setIndex((i) => (direccion === "left" ? (i + 1) % total : (i - 1 + total) % total));
-      setExitDir(null);
-      setDragX(0);
-    }, EXIT_DURATION);
-  }
-
-  // Flechas del teclado -- misma navegación que el swipe, para quien usa
-  // escritorio sin mouse de arrastre cómodo.
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "ArrowLeft") avanzar("right");
-      if (e.key === "ArrowRight") avanzar("left");
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [total]);
-
-  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (exitDir) return;
-    startXRef.current = e.clientX;
-    setArrastrando(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }
-
-  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (!arrastrando) return;
-    setDragX(e.clientX - startXRef.current);
-  }
-
-  function onPointerUp(gatoActual: Gato) {
-    return () => {
-      if (!arrastrando) return;
-      setArrastrando(false);
-      if (total > 1 && Math.abs(dragX) > SWIPE_THRESHOLD) {
-        avanzar(dragX < 0 ? "left" : "right");
-      } else if (Math.abs(dragX) < TAP_THRESHOLD) {
-        setSeleccionado(gatoActual);
-        setDragX(0);
-      } else {
-        setDragX(0);
-      }
-    };
-  }
-
   if (total === 0) return null;
 
-  // Hasta 3 tarjetas apiladas visibles: la actual (arriba, interactiva) +
-  // hasta 2 de "peek" detrás, solo decorativas.
-  const visibles = [0, 1, 2]
-    .filter((offset) => offset < total)
-    .map((offset) => ({ offset, gato: gatosDisponibles[(safeIndex + offset) % total] }));
+  /** Desplaza el carrusel exactamente el ancho de una tarjeta (+ separación)
+   * -- así las flechas avanzan de una en una, igual que el gesto de swipe. */
+  function desplazar(direccion: "izquierda" | "derecha") {
+    const track = trackRef.current;
+    if (!track) return;
+    const tarjeta = track.querySelector<HTMLElement>("[data-tarjeta]");
+    const paso = tarjeta ? tarjeta.getBoundingClientRect().width + 16 : track.clientWidth * 0.8;
+    track.scrollBy({ left: direccion === "derecha" ? paso : -paso, behavior: "smooth" });
+  }
 
   return (
     <div className="bg-[var(--rescue-paper)] scroll-mt-14">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6 py-10 sm:py-12">
-        <RibbonBanner tone="dark" className="mb-4">
-          Conoce a quién puedes adoptar hoy
-        </RibbonBanner>
-
-        <div className="mx-auto max-w-sm">
-          <div className="relative h-[440px] select-none">
-            {visibles
-              .slice()
-              .reverse()
-              .map(({ offset, gato }) => {
-                const esActual = offset === 0;
-                const rotacion = esActual ? dragX / 18 : 0;
-                const translateX = esActual
-                  ? exitDir === "left"
-                    ? -420
-                    : exitDir === "right"
-                      ? 420
-                      : dragX
-                  : 0;
-                const escala = esActual ? 1 : 1 - offset * 0.04;
-                const translateY = esActual ? 0 : offset * 10;
-                const sinTransicion = esActual && arrastrando;
-
-                return (
-                  <div
-                    key={gato.id}
-                    style={{
-                      zIndex: 10 - offset,
-                      transform: `translate(${translateX}px, ${translateY}px) rotate(${rotacion}deg) scale(${escala})`,
-                      transition: sinTransicion ? "none" : `transform ${EXIT_DURATION}ms ease-out`,
-                      opacity: esActual ? 1 : 0.85 - offset * 0.15,
-                      touchAction: esActual ? "pan-y" : undefined,
-                    }}
-                    className="absolute inset-0 rounded-2xl overflow-hidden border-2 border-[var(--rescue-ink)]/10 bg-white flex flex-col shadow-lg cursor-grab active:cursor-grabbing"
-                    onPointerDown={esActual ? onPointerDown : undefined}
-                    onPointerMove={esActual ? onPointerMove : undefined}
-                    onPointerUp={esActual ? onPointerUp(gato) : undefined}
-                    onPointerCancel={esActual ? onPointerUp(gato) : undefined}
-                  >
-                    <div className="flex-1 overflow-hidden">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={gato.fotoUrl!}
-                        alt={gato.nombre}
-                        draggable={false}
-                        className="w-full h-full object-cover pointer-events-none"
-                      />
-                    </div>
-                    <div className="p-3">
-                      <p className="font-bold text-base text-[var(--rescue-ink)] truncate">{gato.nombre}</p>
-                      <p className="text-sm text-[var(--rescue-ink)]/60 truncate">
-                        {[gato.sexo, gato.edadAprox].filter(Boolean).join(" · ") || "Disponible"}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-
-          {/* Flechas + contador -- también permiten navegar en escritorio,
-           * donde no hay gesto táctil de swipe. */}
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              aria-label="Gato anterior"
-              onClick={() => avanzar("right")}
-              disabled={total <= 1}
-              className="w-9 h-9 rounded-full bg-white border-2 border-[var(--rescue-ink)]/15 flex items-center justify-center text-[var(--rescue-ink)] text-lg disabled:opacity-30"
-            >
-              ‹
-            </button>
-            <div className="text-center">
-              <p className="text-xs font-semibold text-[var(--rescue-ink)]/70">
-                Gato {safeIndex + 1} de {total}
-              </p>
-              {total > 1 && (
-                <p className="text-[11px] text-[var(--rescue-ink)]/45">← Desliza para ver más →</p>
-              )}
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 py-10 sm:py-12">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <RibbonBanner tone="dark">Conoce a quién puedes adoptar hoy</RibbonBanner>
+          {total > 1 && (
+            <div className="hidden sm:flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                aria-label="Ver gatos anteriores"
+                onClick={() => desplazar("izquierda")}
+                className="w-9 h-9 rounded-full bg-white border-2 border-[var(--rescue-ink)]/15 flex items-center justify-center text-[var(--rescue-ink)] text-lg hover:bg-[var(--rescue-paper-alt)] transition"
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                aria-label="Ver más gatos"
+                onClick={() => desplazar("derecha")}
+                className="w-9 h-9 rounded-full bg-white border-2 border-[var(--rescue-ink)]/15 flex items-center justify-center text-[var(--rescue-ink)] text-lg hover:bg-[var(--rescue-paper-alt)] transition"
+              >
+                ›
+              </button>
             </div>
-            <button
-              type="button"
-              aria-label="Siguiente gato"
-              onClick={() => avanzar("left")}
-              disabled={total <= 1}
-              className="w-9 h-9 rounded-full bg-white border-2 border-[var(--rescue-ink)]/15 flex items-center justify-center text-[var(--rescue-ink)] text-lg disabled:opacity-30"
-            >
-              ›
-            </button>
-          </div>
+          )}
         </div>
+
+        {/* Carrusel: scroll-snap nativo -- en móvil se desliza con el dedo,
+         * en escritorio con las flechas de arriba o arrastrando con mouse.
+         * El ancho de cada tarjeta define cuántas se alcanzan a ver: ~1.3
+         * en móvil (con "peek" de la siguiente), ~2.3 en tablet, 4 en
+         * escritorio (max-w-6xl / 4 con separación). */}
+        <div
+          ref={trackRef}
+          className="flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {gatosDisponibles.map((gato) => (
+            <button
+              key={gato.id}
+              type="button"
+              data-tarjeta
+              onClick={() => setSeleccionado(gato)}
+              className="shrink-0 snap-start w-[72%] sm:w-[38%] lg:w-[23%] rounded-2xl overflow-hidden border-2 border-[var(--rescue-ink)]/10 bg-white shadow-lg text-left"
+            >
+              <div className="aspect-[4/5] bg-[var(--rescue-paper-alt)]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/gato/${gato.id}/flyer`}
+                  alt={`Flyer de ${gato.nombre}`}
+                  loading="lazy"
+                  className="w-full h-full object-cover pointer-events-none"
+                />
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {total > 1 && (
+          <p className="mt-3 text-center text-[11px] text-[var(--rescue-ink)]/45 sm:hidden">
+            ← Desliza para ver más →
+          </p>
+        )}
       </div>
 
       {seleccionado && (
@@ -230,20 +138,11 @@ export function GatosGaleria({
             </button>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={seleccionado.fotoUrl!}
-              alt={seleccionado.nombre}
-              className="w-full max-h-[70vh] object-contain bg-[var(--rescue-paper)]"
+              src={`/gato/${seleccionado.id}/flyer`}
+              alt={`Flyer de ${seleccionado.nombre}`}
+              className="w-full max-h-[75vh] object-contain bg-[var(--rescue-paper)]"
             />
             <div className="p-4 flex flex-col gap-3">
-              <div>
-                <p className="font-bold text-lg text-[var(--rescue-ink)]">{seleccionado.nombre}</p>
-                <p className="text-sm text-[var(--rescue-ink)]/60">
-                  {[seleccionado.sexo, seleccionado.edadAprox].filter(Boolean).join(" · ") || "Disponible"}
-                </p>
-                {seleccionado.descripcion && (
-                  <p className="mt-1 text-sm text-[var(--rescue-ink)]/75">{seleccionado.descripcion}</p>
-                )}
-              </div>
               <a
                 href={`?${gatoHref(campaign, seleccionado.nombre)}#formulario`}
                 className="rescue-ribbon rescue-display self-start bg-[var(--rescue-ink)] text-white px-6 py-2.5 font-extrabold uppercase text-sm hover:opacity-90 transition"
