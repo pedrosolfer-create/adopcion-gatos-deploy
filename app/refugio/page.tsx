@@ -13,6 +13,7 @@ import { StatTile } from "@/components/StatTile";
 import { TrendChart } from "@/components/TrendChart";
 import { LoginForm } from "@/components/LoginForm";
 import { DeleteGatoButton } from "@/components/DeleteGatoButton";
+import { FotoGatoInput } from "@/components/FotoGatoInput";
 import { PERSONALIDAD_OPCIONES, FRASE_OPCIONES, CHECKLIST_SALUD, TIPOS_VACUNA_COMUNES } from "@/lib/gatoOpciones";
 import {
   addGatoAction,
@@ -235,41 +236,14 @@ export default async function RefugioPage({
               </fieldset>
 
               <div className="grid sm:grid-cols-3 gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-ink-soft">Foto 1 (opcional)</span>
-                  <input
-                    type="file"
-                    name="foto"
-                    accept="image/*"
-                    capture="environment"
-                    className="input file:mr-2 file:rounded-lg file:border-0 file:bg-teal/10 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-teal-deep"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-ink-soft">Foto 2 (opcional)</span>
-                  <input
-                    type="file"
-                    name="foto2"
-                    accept="image/*"
-                    capture="environment"
-                    className="input file:mr-2 file:rounded-lg file:border-0 file:bg-teal/10 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-teal-deep"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-ink-soft">Foto 3 (opcional)</span>
-                  <input
-                    type="file"
-                    name="foto3"
-                    accept="image/*"
-                    capture="environment"
-                    className="input file:mr-2 file:rounded-lg file:border-0 file:bg-teal/10 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-teal-deep"
-                  />
-                </label>
+                <FotoGatoInput name="foto" label="Foto 1 (opcional)" />
+                <FotoGatoInput name="foto2" label="Foto 2 (opcional)" />
+                <FotoGatoInput name="foto3" label="Foto 3 (opcional)" />
               </div>
               <span className="text-[11px] text-muted -mt-2">
-                Desde tu celular, esto te deja tomar la foto en el momento o elegir una que ya
-                tengas guardada. Con al menos una foto, el gato aparece en la sección pública de
-                adopción y puedes generar su diseño automático (flyer) para redes sociales.
+                En cada foto puedes tomarla en el momento con la cámara o elegir una que ya
+                tengas guardada en tu celular. Con al menos una foto, el gato aparece en la sección
+                pública de adopción y puedes generar su diseño automático (flyer) para redes sociales.
               </span>
               <button type="submit" className="btn-primary self-start">Guardar gato</button>
             </form>
